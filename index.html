@@ -1,0 +1,2751 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>The Backrooms: Multiplayer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #000; color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden; touch-action: none; user-select: none;
+            -webkit-user-select: none;
+        }
+        #uiLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; pointer-events: auto; z-index: 100;
+            overflow-y: auto;
+        }
+        .hidden { display: none !important; }
+        .text-center { text-align: center; padding: 20px; max-width: 600px; width: 90%; }
+        h1 { color: #d4b848; margin-bottom: 10px; text-shadow: 2px 2px 5px #000; font-size: 24px; }
+        h2 { color: #d4b848; margin-bottom: 10px; font-size: 20px; }
+        p { font-size: 14px; line-height: 1.5; color: #ccc; }
+        button.menu-btn, select.menu-btn, input.menu-input {
+            background: #d4b848; color: #000; border: 2px solid #887422;
+            padding: 12px 24px; font-size: 16px; font-weight: bold; font-family: inherit;
+            margin-top: 10px; border-radius: 5px; cursor: pointer; transition: 0.2s;
+            width: 100%; box-sizing: border-box; display: block;
+        }
+        input.menu-input {
+            background: #222; color: #fff; border: 2px solid #555;
+            text-align: center;
+        }
+        input.menu-input::placeholder { color: #777; }
+        input.menu-input:focus { border-color: #d4b848; outline: none; }
+        button.menu-btn:hover, select.menu-btn:hover { background: #e8c94e; transform: scale(1.02); }
+        button.menu-btn:active { background: #aa9338; transform: scale(0.98); }
+        button.menu-btn.secondary { background: #555; color: #fff; border-color: #333; }
+        button.menu-btn.secondary:hover { background: #777; }
+        button.menu-btn.danger { background: #aa3333; color: #fff; border-color: #772222; }
+        button.menu-btn.small { padding: 8px 16px; font-size: 14px; width: auto; display: inline-block; margin: 5px; }
+        select.menu-btn { outline: none; appearance: none; text-align: center; }
+        .error-text { color: #ff4444; font-size: 14px; margin-top: 5px; }
+        .success-text { color: #44ff44; font-size: 14px; margin-top: 5px; }
+        .info-text { color: #aaa; font-size: 12px; margin-top: 5px; }
+        .list-item {
+            background: rgba(50,50,50,0.5); border: 1px solid #555; padding: 10px;
+            margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between;
+            align-items: center; font-size: 14px;
+        }
+        .list-item .nick { color: #d4b848; font-weight: bold; }
+        .lobby-players { text-align: left; margin: 10px 0; }
+        .tab-bar { display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
+        .tab-bar button { flex: 1; min-width: 80px; }
+
+        #hud { position: absolute; top: 10px; left: 10px; pointer-events: auto; }
+        #keysCount { font-size: 20px; font-weight: bold; color: #fff; text-shadow: 1px 1px 2px #000;}
+        #aliveCount { font-size: 16px; color: #4f4; text-shadow: 1px 1px 2px #000; margin-top: 5px;}
+        #staminaContainer { width: 150px; height: 10px; background: rgba(50,50,50,0.5); border: 2px solid #555; margin-top: 10px; border-radius: 5px; overflow: hidden;}
+        #staminaBar { width: 100%; height: 100%; background: #0088ff; transition: width 0.1s linear, background-color 0.3s; }
+        #staminaBar.exhausted { background: #ff3333; }
+        #messages { position: absolute; top: 20%; width: 100%; text-align: center; font-size: 18px; color: #fff; text-shadow: 1px 1px 3px #000; opacity: 0; transition: opacity 0.3s;}
+        #highlightMsg { position: absolute; top: 10%; width: 100%; text-align: center; font-size: 22px; color: #ff4444; text-shadow: 2px 2px 4px #000; opacity: 0; transition: opacity 0.5s; font-weight: bold;}
+
+        #btnFullscreen { position: absolute; top: 10px; right: 10px; padding: 10px; font-size: 14px; pointer-events: auto; background: rgba(50,50,50,0.5); border: 1px solid #fff; color: white; border-radius: 5px; cursor: pointer;}
+        .action-btn { position: absolute; width: 60px; height: 60px; border-radius: 50%; background: rgba(200,200,200,0.2); border: 2px solid rgba(255,255,255,0.5); pointer-events: auto; font-size: 24px; display:flex; justify-content:center; align-items:center; color: white; transition: 0.2s; backdrop-filter: blur(2px);}
+        .action-btn.active { background: rgba(255,255,255,0.8); color: black; box-shadow: 0 0 15px rgba(255,255,255,0.5); border-color: #fff;}
+
+        #btnFlashlight { bottom: 20px; right: 20px; }
+        #btnJump { bottom: 20px; right: 90px; }
+        #btnRun { bottom: 90px; right: 20px; }
+
+        #joystickBase { position: absolute; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); transform: translate(-50%, -50%); display: none; pointer-events: none; z-index: 50; backdrop-filter: blur(2px);}
+        #joystickStick { position: absolute; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.8); transform: translate(-50%, -50%); top: 50%; left: 50%; pointer-events: none; box-shadow: 0 0 10px rgba(0,0,0,0.5);}
+
+        #vignette { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; box-shadow: inset 0 0 150px rgba(0,0,0,0.9); z-index: 5;}
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: rgba(255,255,255,0.5); transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; z-index: 6;}
+
+        #screamerLayer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #550000;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, #000 2px, #000 4px);
+            opacity: 0.9; z-index: 1000; display: none; mix-blend-mode: multiply;
+            animation: glitch 0.05s infinite;
+        }
+        @keyframes glitch {
+            0% { transform: translate(0) }
+            20% { transform: translate(-10px, 10px) }
+            40% { transform: translate(-10px, -10px) }
+            60% { transform: translate(10px, 10px) }
+            80% { transform: translate(10px, -10px) }
+            100% { transform: translate(0) }
+        }
+
+        #spectatorBar {
+            position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 10px;
+            border: 1px solid #555; pointer-events: auto; z-index: 20;
+            display: none; text-align: center;
+        }
+        #spectatorBar .spec-nick { color: #d4b848; font-size: 18px; font-weight: bold; }
+        #spectatorBar button { margin: 5px; padding: 8px 15px; }
+    </style>
+</head>
+<body>
+
+<!-- ============= UI LAYER (в игре) ============= -->
+<div id="uiLayer" class="hidden">
+    <div id="hud">
+        <div id="keysCount">Папки: 0/8</div>
+        <div id="aliveCount" class="hidden">Выжившие: 0</div>
+        <div id="staminaContainer"><div id="staminaBar"></div></div>
+    </div>
+    <div id="messages">Сообщение</div>
+    <div id="highlightMsg"></div>
+    <div id="vignette"></div>
+    <div id="crosshair"></div>
+    <button id="btnFullscreen">⛶</button>
+    <div id="btnFlashlight" class="action-btn active">💡</div>
+    <div id="btnRun" class="action-btn">🏃</div>
+    <div id="btnJump" class="action-btn">⏫</div>
+    <div id="joystickBase"><div id="joystickStick"></div></div>
+</div>
+
+<div id="spectatorBar">
+    <div>Наблюдение за: <span class="spec-nick" id="specNick">---</span></div>
+    <button class="menu-btn small secondary" id="specPrev">◄ Пред</button>
+    <button class="menu-btn small secondary" id="specNext">След ►</button>
+</div>
+
+<div id="screamerLayer"></div>
+
+<!-- ============= AUTH SCREEN ============= -->
+<div id="authScreen" class="overlay">
+    <div class="text-center">
+        <h1>THE BACKROOMS</h1>
+        <p>Вход / Регистрация</p>
+        <input class="menu-input" id="authNick" placeholder="Ник (уникальный)" maxlength="20">
+        <input class="menu-input" id="authEmail" placeholder="Email" type="email">
+        <input class="menu-input" id="authPass" placeholder="Пароль (мин 6 символов)" type="password">
+        <div id="authError" class="error-text hidden"></div>
+        <div id="authSuccess" class="success-text hidden"></div>
+        <button class="menu-btn" id="btnRegister">Зарегистрироваться</button>
+        <button class="menu-btn secondary" id="btnLogin">Войти</button>
+        <button class="menu-btn secondary" id="btnOffline" style="margin-top:20px;">Играть оффлайн (без аккаунта)</button>
+    </div>
+</div>
+
+<!-- ============= MAIN MENU ============= -->
+<div id="mainMenu" class="overlay hidden">
+    <div class="text-center">
+        <h1>THE BACKROOMS</h1>
+        <p>Привет, <span id="menuNick" style="color:#d4b848">---</span>!</p>
+        <button class="menu-btn" id="btnPlayOffline">Одиночная игра (оффлайн)</button>
+        <button class="menu-btn" id="btnCreateLobby">Создать лобби</button>
+        <button class="menu-btn" id="btnJoinLobby">Присоединиться к лобби</button>
+        <button class="menu-btn secondary" id="btnFriends">Друзья</button>
+        <button class="menu-btn secondary" id="btnLogout" style="margin-top:20px;">Выйти</button>
+    </div>
+</div>
+
+<!-- ============= OFFLINE START ============= -->
+<div id="offlineStart" class="overlay hidden">
+    <div class="text-center">
+        <h1>ОДИНОЧНАЯ ИГРА</h1>
+        <p>Найдите <b>8 папок с данными</b>, чтобы открыть выход.<br>
+        Управление: WASD + Пробел + Shift / Тач<br>
+        Не дайте ему вас увидеть.</p>
+        <select id="diffSelect" class="menu-btn" style="margin-bottom:10px;">
+            <option value="easy">Сложность: Лёгкая</option>
+            <option value="normal" selected>Сложность: Нормальная</option>
+            <option value="hard">Сложность: Сложная</option>
+            <option value="extreme">Сложность: Экстрим</option>
+        </select>
+        <input class="menu-input" id="offlineSeed" placeholder="Сид карты (пусто = случайный)">
+        <p class="info-text">Введите число для генерации определённой карты</p>
+        <button class="menu-btn" id="btnStartOffline">Начать спуск</button>
+        <button class="menu-btn secondary" id="btnBackFromOffline">Назад</button>
+    </div>
+</div>
+
+<!-- ============= FRIENDS ============= -->
+<div id="friendsScreen" class="overlay hidden">
+    <div class="text-center">
+        <h2>Друзья</h2>
+        <input class="menu-input" id="friendNickInput" placeholder="Ник друга">
+        <button class="menu-btn small" id="btnAddFriend">Добавить в друзья</button>
+        <div id="friendError" class="error-text hidden"></div>
+        <div id="friendSuccess" class="success-text hidden"></div>
+        <h2 style="margin-top:20px;">Запросы дружбы</h2>
+        <div id="friendRequests"></div>
+        <h2 style="margin-top:20px;">Мои друзья</h2>
+        <div id="friendsList"></div>
+        <button class="menu-btn secondary" id="btnBackFromFriends" style="margin-top:20px;">Назад</button>
+    </div>
+</div>
+
+<!-- ============= CREATE LOBBY ============= -->
+<div id="createLobbyScreen" class="overlay hidden">
+    <div class="text-center">
+        <h2>Создать лобби</h2>
+        <input class="menu-input" id="lobbyName" placeholder="Название лобби" maxlength="30">
+        <select id="lobbyMaxPlayers" class="menu-btn" style="margin-bottom:10px;">
+            <option value="2">2 игрока</option>
+            <option value="3">3 игрока</option>
+            <option value="4" selected>4 игрока</option>
+            <option value="6">6 игроков</option>
+        </select>
+        <select id="lobbyMode" class="menu-btn" style="margin-bottom:10px;">
+            <option value="normal">Обычный (ИИ-монстр)</option>
+            <option value="monster">Режим монстра (игрок = монстр)</option>
+        </select>
+        <select id="lobbyDiff" class="menu-btn" style="margin-bottom:10px;">
+            <option value="easy">Лёгкая</option>
+            <option value="normal" selected>Нормальная</option>
+            <option value="hard">Сложная</option>
+            <option value="extreme">Экстрим</option>
+        </select>
+        <input class="menu-input" id="lobbySeed" placeholder="Сид карты (пусто = случайный)">
+        <button class="menu-btn" id="btnDoCreateLobby">Создать</button>
+        <button class="menu-btn secondary" id="btnBackFromCreate">Назад</button>
+    </div>
+</div>
+
+<!-- ============= JOIN LOBBY ============= -->
+<div id="joinLobbyScreen" class="overlay hidden">
+    <div class="text-center">
+        <h2>Лобби</h2>
+        <button class="menu-btn small" id="btnRefreshLobbies">Обновить</button>
+        <div id="lobbyList" style="margin-top:10px;"></div>
+        <button class="menu-btn secondary" id="btnBackFromJoin" style="margin-top:20px;">Назад</button>
+    </div>
+</div>
+
+<!-- ============= LOBBY WAITING ============= -->
+<div id="lobbyWaitScreen" class="overlay hidden">
+    <div class="text-center">
+        <h2>Лобби: <span id="waitLobbyName">---</span></h2>
+        <p>Режим: <span id="waitLobbyMode">---</span> | Макс: <span id="waitLobbyMax">---</span> | Сложность: <span id="waitLobbyDiff">---</span></p>
+        <p>Сид: <span id="waitLobbySeed">---</span></p>
+        <div class="lobby-players" id="waitPlayersList"></div>
+        <button class="menu-btn" id="btnStartGame" class="hidden">Начать игру (хост)</button>
+        <button class="menu-btn danger" id="btnLeaveLobby" style="margin-top:10px;">Покинуть лобби</button>
+    </div>
+</div>
+
+<!-- ============= GAME OVER ============= -->
+<div id="gameOverScreen" class="overlay hidden">
+    <div class="text-center">
+        <h1 id="endTitle">ВЫ ПОГИБЛИ</h1>
+        <p id="endText">Сущность настигла вас.</p>
+        <button id="btnRestart" class="menu-btn">В главное меню</button>
+    </div>
+</div>
+
+<script>
+// =============================================
+// FIREBASE INIT
+// =============================================
+const firebaseConfig = {
+    apiKey: "AIzaSyC5CpborEid-gLP9zmAfxyaINztp2yrGO8",
+    authDomain: "onlinegamebethrom.firebaseapp.com",
+    databaseURL: "https://onlinegamebethrom-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "onlinegamebethrom",
+    storageBucket: "onlinegamebethrom.firebasestorage.app",
+    messagingSenderId: "9036957054",
+    appId: "1:9036957054:web:1243a140e3192bfb681f2f",
+    measurementId: "G-MPE9YE74E3"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+// =============================================
+// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+// =============================================
+let currentUser = null; // { uid, nick, email }
+let isOfflineMode = false;
+let currentLobbyId = null;
+let isHost = false;
+let lobbyRef = null;
+let lobbyListeners = [];
+
+// =============================================
+// SEEDED RANDOM
+// =============================================
+function mulberry32(a) {
+    return function() {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        var t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+}
+let seededRandom = Math.random;
+function setSeed(seed) {
+    if (seed && seed !== '') {
+        let numSeed = 0;
+        if (!isNaN(seed)) { numSeed = parseInt(seed); }
+        else { for(let i=0;i<seed.length;i++) numSeed = ((numSeed << 5) - numSeed) + seed.charCodeAt(i); }
+        seededRandom = mulberry32(numSeed);
+    } else {
+        seededRandom = Math.random;
+    }
+}
+
+// =============================================
+// AUTH FUNCTIONS
+// =============================================
+function showAuthError(msg) {
+    let el = document.getElementById('authError');
+    el.textContent = msg; el.classList.remove('hidden');
+    document.getElementById('authSuccess').classList.add('hidden');
+}
+function showAuthSuccess(msg) {
+    let el = document.getElementById('authSuccess');
+    el.textContent = msg; el.classList.remove('hidden');
+    document.getElementById('authError').classList.add('hidden');
+}
+
+document.getElementById('btnRegister').addEventListener('click', async () => {
+    let nick = document.getElementById('authNick').value.trim();
+    let email = document.getElementById('authEmail').value.trim();
+    let pass = document.getElementById('authPass').value;
+    if (!nick || nick.length < 2) { showAuthError('Ник минимум 2 символа'); return; }
+    if (!email) { showAuthError('Введите email'); return; }
+    if (pass.length < 6) { showAuthError('Пароль минимум 6 символов'); return; }
+
+    try {
+        // Проверяем уникальность ника
+        let snap = await db.ref('usernames/' + nick.toLowerCase()).once('value');
+        if (snap.exists()) { showAuthError('Ник "' + nick + '" уже занят!'); return; }
+
+        let cred = await auth.createUserWithEmailAndPassword(email, pass);
+        let uid = cred.user.uid;
+
+        // Сохраняем
+        await db.ref('users/' + uid).set({ nick: nick, email: email, createdAt: Date.now() });
+        await db.ref('usernames/' + nick.toLowerCase()).set(uid);
+
+        currentUser = { uid, nick, email };
+        showAuthSuccess('Регистрация успешна!');
+        setTimeout(() => goToMainMenu(), 500);
+    } catch(e) {
+        if (e.code === 'auth/email-already-in-use') showAuthError('Email уже используется');
+        else if (e.code === 'auth/invalid-email') showAuthError('Неверный email');
+        else showAuthError(e.message);
+    }
+});
+
+document.getElementById('btnLogin').addEventListener('click', async () => {
+    let email = document.getElementById('authEmail').value.trim();
+    let pass = document.getElementById('authPass').value;
+    if (!email || pass.length < 6) { showAuthError('Введите email и пароль'); return; }
+
+    try {
+        let cred = await auth.signInWithEmailAndPassword(email, pass);
+        let uid = cred.user.uid;
+        let snap = await db.ref('users/' + uid).once('value');
+        if (snap.exists()) {
+            let data = snap.val();
+            currentUser = { uid, nick: data.nick, email: data.email };
+            showAuthSuccess('Вход выполнен!');
+            setTimeout(() => goToMainMenu(), 500);
+        } else {
+            showAuthError('Данные пользователя не найдены');
+        }
+    } catch(e) {
+        if (e.code === 'auth/user-not-found') showAuthError('Пользователь не найден');
+        else if (e.code === 'auth/wrong-password') showAuthError('Неверный пароль');
+        else showAuthError(e.message);
+    }
+});
+
+document.getElementById('btnOffline').addEventListener('click', () => {
+    isOfflineMode = true;
+    currentUser = { uid: 'offline', nick: 'Игрок', email: '' };
+    goToOfflineStart();
+});
+
+// =============================================
+// NAVIGATION
+// =============================================
+function hideAll() {
+    ['authScreen','mainMenu','offlineStart','friendsScreen',
+     'createLobbyScreen','joinLobbyScreen','lobbyWaitScreen',
+     'gameOverScreen','uiLayer','spectatorBar'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+    });
+}
+
+function goToMainMenu() {
+    hideAll();
+    document.getElementById('mainMenu').classList.remove('hidden');
+    document.getElementById('menuNick').textContent = currentUser.nick;
+}
+
+function goToOfflineStart() {
+    hideAll();
+    document.getElementById('offlineStart').classList.remove('hidden');
+}
+
+document.getElementById('btnPlayOffline').addEventListener('click', goToOfflineStart);
+document.getElementById('btnBackFromOffline').addEventListener('click', () => {
+    if (isOfflineMode) { hideAll(); document.getElementById('authScreen').classList.remove('hidden'); }
+    else goToMainMenu();
+});
+document.getElementById('btnLogout').addEventListener('click', () => {
+    auth.signOut();
+    currentUser = null;
+    isOfflineMode = false;
+    hideAll();
+    document.getElementById('authScreen').classList.remove('hidden');
+});
+
+// =============================================
+// FRIENDS SYSTEM
+// =============================================
+document.getElementById('btnFriends').addEventListener('click', () => {
+    hideAll();
+    document.getElementById('friendsScreen').classList.remove('hidden');
+    loadFriends();
+    loadFriendRequests();
+});
+document.getElementById('btnBackFromFriends').addEventListener('click', goToMainMenu);
+
+document.getElementById('btnAddFriend').addEventListener('click', async () => {
+    let nick = document.getElementById('friendNickInput').value.trim().toLowerCase();
+    let errEl = document.getElementById('friendError');
+    let sucEl = document.getElementById('friendSuccess');
+    errEl.classList.add('hidden'); sucEl.classList.add('hidden');
+
+    if (!nick) { errEl.textContent = 'Введите ник'; errEl.classList.remove('hidden'); return; }
+    if (nick === currentUser.nick.toLowerCase()) { errEl.textContent = 'Нельзя добавить себя'; errEl.classList.remove('hidden'); return; }
+
+    try {
+        let snap = await db.ref('usernames/' + nick).once('value');
+        if (!snap.exists()) { errEl.textContent = 'Игрок не найден'; errEl.classList.remove('hidden'); return; }
+        let targetUid = snap.val();
+
+        // Проверяем не друзья ли уже
+        let friendSnap = await db.ref('friends/' + currentUser.uid + '/' + targetUid).once('value');
+        if (friendSnap.exists()) { errEl.textContent = 'Уже в друзьях'; errEl.classList.remove('hidden'); return; }
+
+        // Отправляем запрос
+        await db.ref('friend_requests/' + targetUid + '/' + currentUser.uid).set({
+            nick: currentUser.nick, timestamp: Date.now()
+        });
+        sucEl.textContent = 'Запрос отправлен!'; sucEl.classList.remove('hidden');
+        document.getElementById('friendNickInput').value = '';
+    } catch(e) {
+        errEl.textContent = e.message; errEl.classList.remove('hidden');
+    }
+});
+
+async function loadFriendRequests() {
+    let container = document.getElementById('friendRequests');
+    container.innerHTML = '<p class="info-text">Загрузка...</p>';
+    try {
+        let snap = await db.ref('friend_requests/' + currentUser.uid).once('value');
+        container.innerHTML = '';
+        if (!snap.exists()) { container.innerHTML = '<p class="info-text">Нет запросов</p>'; return; }
+        snap.forEach(child => {
+            let data = child.val();
+            let fromUid = child.key;
+            let div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerHTML = `<span class="nick">${data.nick}</span>
+                <span>
+                    <button class="menu-btn small" onclick="acceptFriend('${fromUid}','${data.nick}')">✓</button>
+                    <button class="menu-btn small danger" onclick="rejectFriend('${fromUid}')">✗</button>
+                </span>`;
+            container.appendChild(div);
+        });
+    } catch(e) { container.innerHTML = '<p class="error-text">Ошибка загрузки</p>'; }
+}
+
+window.acceptFriend = async function(fromUid, fromNick) {
+    await db.ref('friends/' + currentUser.uid + '/' + fromUid).set({ nick: fromNick });
+    await db.ref('friends/' + fromUid + '/' + currentUser.uid).set({ nick: currentUser.nick });
+    await db.ref('friend_requests/' + currentUser.uid + '/' + fromUid).remove();
+    loadFriendRequests();
+    loadFriends();
+};
+
+window.rejectFriend = async function(fromUid) {
+    await db.ref('friend_requests/' + currentUser.uid + '/' + fromUid).remove();
+    loadFriendRequests();
+};
+
+async function loadFriends() {
+    let container = document.getElementById('friendsList');
+    container.innerHTML = '<p class="info-text">Загрузка...</p>';
+    try {
+        let snap = await db.ref('friends/' + currentUser.uid).once('value');
+        container.innerHTML = '';
+        if (!snap.exists()) { container.innerHTML = '<p class="info-text">Нет друзей</p>'; return; }
+        snap.forEach(child => {
+            let data = child.val();
+            let div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerHTML = `<span class="nick">${data.nick}</span>
+                <button class="menu-btn small danger" onclick="removeFriend('${child.key}')">Удалить</button>`;
+            container.appendChild(div);
+        });
+    } catch(e) { container.innerHTML = '<p class="error-text">Ошибка загрузки</p>'; }
+}
+
+window.removeFriend = async function(friendUid) {
+    await db.ref('friends/' + currentUser.uid + '/' + friendUid).remove();
+    await db.ref('friends/' + friendUid + '/' + currentUser.uid).remove();
+    loadFriends();
+};
+
+// =============================================
+// LOBBY SYSTEM
+// =============================================
+document.getElementById('btnCreateLobby').addEventListener('click', () => {
+    hideAll();
+    document.getElementById('createLobbyScreen').classList.remove('hidden');
+});
+document.getElementById('btnBackFromCreate').addEventListener('click', goToMainMenu);
+
+document.getElementById('btnDoCreateLobby').addEventListener('click', async () => {
+    let name = document.getElementById('lobbyName').value.trim() || (currentUser.nick + "'s lobby");
+    let maxP = parseInt(document.getElementById('lobbyMaxPlayers').value);
+    let mode = document.getElementById('lobbyMode').value;
+    let diff = document.getElementById('lobbyDiff').value;
+    let seed = document.getElementById('lobbySeed').value.trim();
+    if (!seed) seed = Math.floor(Math.random() * 999999).toString();
+
+    let lobbyData = {
+        name: name,
+        host: currentUser.uid,
+        hostNick: currentUser.nick,
+        maxPlayers: maxP,
+        mode: mode,
+        difficulty: diff,
+        seed: seed,
+        state: 'waiting', // waiting, playing, ended
+        players: {},
+        createdAt: Date.now()
+    };
+    lobbyData.players[currentUser.uid] = { nick: currentUser.nick, ready: true };
+
+    let newRef = db.ref('lobbies').push();
+    currentLobbyId = newRef.key;
+    isHost = true;
+    await newRef.set(lobbyData);
+
+    goToLobbyWait();
+});
+
+document.getElementById('btnJoinLobby').addEventListener('click', () => {
+    hideAll();
+    document.getElementById('joinLobbyScreen').classList.remove('hidden');
+    loadLobbies();
+});
+document.getElementById('btnBackFromJoin').addEventListener('click', goToMainMenu);
+
+document.getElementById('btnRefreshLobbies').addEventListener('click', loadLobbies);
+
+async function loadLobbies() {
+    let container = document.getElementById('lobbyList');
+    container.innerHTML = '<p class="info-text">Загрузка...</p>';
+    try {
+        let snap = await db.ref('lobbies').orderByChild('state').equalTo('waiting').once('value');
+        container.innerHTML = '';
+        if (!snap.exists()) { container.innerHTML = '<p class="info-text">Нет доступных лобби</p>'; return; }
+        snap.forEach(child => {
+            let data = child.val();
+            let playerCount = data.players ? Object.keys(data.players).length : 0;
+            if (playerCount >= data.maxPlayers) return;
+            let modeText = data.mode === 'normal' ? 'Обычный' : 'Режим монстра';
+            let div = document.createElement('div');
+            div.className = 'list-item';
+            div.style.flexDirection = 'column'; div.style.alignItems = 'stretch';
+            div.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span class="nick">${data.name}</span>
+                    <span>${playerCount}/${data.maxPlayers}</span>
+                </div>
+                <div style="font-size:12px;color:#aaa;margin-top:5px;">${modeText} | ${data.difficulty} | Сид: ${data.seed}</div>
+                <button class="menu-btn small" onclick="joinLobby('${child.key}')" style="margin-top:8px;">Присоединиться</button>
+            `;
+            container.appendChild(div);
+        });
+        if (container.children.length === 0) {
+            container.innerHTML = '<p class="info-text">Нет доступных лобби</p>';
+        }
+    } catch(e) { container.innerHTML = '<p class="error-text">Ошибка: '+e.message+'</p>'; }
+}
+
+window.joinLobby = async function(lobbyId) {
+    try {
+        let snap = await db.ref('lobbies/' + lobbyId).once('value');
+        if (!snap.exists()) { alert('Лобби не найдено'); return; }
+        let data = snap.val();
+        let playerCount = data.players ? Object.keys(data.players).length : 0;
+        if (playerCount >= data.maxPlayers) { alert('Лобби полное'); return; }
+        if (data.state !== 'waiting') { alert('Игра уже началась'); return; }
+
+        await db.ref('lobbies/' + lobbyId + '/players/' + currentUser.uid).set({
+            nick: currentUser.nick, ready: true
+        });
+        currentLobbyId = lobbyId;
+        isHost = (data.host === currentUser.uid);
+        goToLobbyWait();
+    } catch(e) { alert('Ошибка: ' + e.message); }
+};
+
+function goToLobbyWait() {
+    hideAll();
+    document.getElementById('lobbyWaitScreen').classList.remove('hidden');
+
+    // Слушаем изменения лобби
+    if (lobbyRef) lobbyRef.off();
+    lobbyRef = db.ref('lobbies/' + currentLobbyId);
+    lobbyRef.on('value', snap => {
+        if (!snap.exists()) {
+            alert('Лобби удалено');
+            goToMainMenu();
+            return;
+        }
+        let data = snap.val();
+        document.getElementById('waitLobbyName').textContent = data.name;
+        document.getElementById('waitLobbyMode').textContent = data.mode === 'normal' ? 'Обычный' : 'Режим монстра';
+        document.getElementById('waitLobbyMax').textContent = data.maxPlayers;
+        document.getElementById('waitLobbyDiff').textContent = data.difficulty;
+        document.getElementById('waitLobbySeed').textContent = data.seed;
+
+        let pList = document.getElementById('waitPlayersList');
+        pList.innerHTML = '';
+        if (data.players) {
+            Object.keys(data.players).forEach(uid => {
+                let p = data.players[uid];
+                let isH = (uid === data.host) ? ' (хост)' : '';
+                let div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `<span class="nick">${p.nick}${isH}</span>`;
+                pList.appendChild(div);
+            });
+        }
+
+        isHost = (data.host === currentUser.uid);
+        let startBtn = document.getElementById('btnStartGame');
+        if (isHost && data.state === 'waiting') {
+            startBtn.classList.remove('hidden');
+            startBtn.style.display = 'block';
+        } else {
+            startBtn.classList.add('hidden');
+            startBtn.style.display = 'none';
+        }
+
+        // Если игра началась — запускаем
+        if (data.state === 'playing' && gameState !== 'play') {
+            startMultiplayerGame(data);
+        }
+    });
+}
+
+document.getElementById('btnLeaveLobby').addEventListener('click', async () => {
+    if (currentLobbyId) {
+        if (lobbyRef) lobbyRef.off();
+        await db.ref('lobbies/' + currentLobbyId + '/players/' + currentUser.uid).remove();
+        // Если хост уходит — удалить лобби
+        if (isHost) await db.ref('lobbies/' + currentLobbyId).remove();
+        currentLobbyId = null;
+        isHost = false;
+    }
+    goToMainMenu();
+});
+
+document.getElementById('btnStartGame').addEventListener('click', async () => {
+    if (!isHost || !currentLobbyId) return;
+    await db.ref('lobbies/' + currentLobbyId + '/state').set('playing');
+});
+
+// =============================================
+// PROCESS AUDIO (unchanged from original)
+// =============================================
+const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+const synth = {
+    init: () => {
+        if(!audioCtx) audioCtx = new AudioCtxClass();
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+    },
+    playTone: (freq, type, dur, vol) => {
+        if(!audioCtx) return;
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.type = type; osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.start(); osc.stop(audioCtx.currentTime + dur);
+    },
+    pickup: () => {
+        synth.playTone(600, 'sine', 0.2, 0.3);
+        setTimeout(() => synth.playTone(900, 'sine', 0.4, 0.3), 100);
+    },
+    step: () => synth.playTone(40, 'sine', 0.1, 0.03),
+    jump: () => synth.playTone(120, 'sine', 0.2, 0.1),
+    land: () => synth.playTone(60, 'square', 0.15, 0.1),
+    screamer: () => {
+        synth.playTone(40, 'sawtooth', 2.5, 1.0);
+        synth.playTone(60, 'square', 2.0, 0.8);
+    },
+    heartbeat: () => synth.playTone(35, 'sine', 0.6, 1.0)
+};
+
+// =============================================
+// GAME CONSTANTS (unchanged)
+// =============================================
+const MAP_SIZE = 21;
+let MAX_KEYS = 8;
+const BLOCK_SIZE = 4;
+const WALL_HEIGHT = BLOCK_SIZE * 1.2;
+
+// =============================================
+// GAME STATE VARIABLES
+// =============================================
+let scene, camera, renderer, flashlight;
+let mapData = [];
+let keysMeshes = [];
+let monsterGroup, mArmL, mArmR, mLegL, mLegR, exitMesh;
+let lastTime = 0;
+let gameState = 'menu'; // menu, play, over, win, spectating
+let msgTimer = 0;
+let highlightTimer = 0;
+
+let gameMode = 'offline'; // offline, online_normal, online_monster
+let difficulty = 'normal';
+const diffStats = {
+    easy:    { w: 3.0, c: 4.5, tpD: 15, tpT: 12, kill: 1.0, hit: 0.3 },
+    normal:  { w: 4.0, c: 5.2, tpD: 12, tpT: 8,  kill: 1.1, hit: 0.4 },
+    hard:    { w: 4.8, c: 6.8, tpD: 10, tpT: 6,  kill: 1.3, hit: 0.5 },
+    extreme: { w: 5.5, c: 8.5, tpD: 8,  tpT: 4,  kill: 1.6, hit: 0.6 }
+};
+
+const player = {
+    x: 0, y: 1.6, z: 0,
+    vy: 0, gravity: 18, jumpPower: 6, isGrounded: true,
+    speed: 5.5, runMult: 1.55,
+    yaw: 0, pitch: 0,
+    keys: 0, stamina: 100, radius: 0.8,
+    walkTimer: 0, isRunning: false, exhausted: false, flashlightOn: true,
+    alive: true
+};
+
+const monster = {
+    x: 0, z: 0,
+    speed: 5.0,
+    dirX: 1, dirZ: 0, bobTimer: 0,
+    tpTimer: 6,
+    path: [], pathIndex: 0, lastKnownPlayer: null, repathTimer: 0, wanderTarget: null,
+    stuckTimer: 0,
+    // Monster mode player controls
+    y: 1.6, vy: 0, yaw: 0, pitch: 0, isGrounded: true,
+    stamina: 100, isRunning: false, exhausted: false, walkTimer: 0,
+    highlightTimer: 0, highlightActive: false
+};
+
+// MULTIPLAYER VARS
+let remotePlayers = {}; // uid -> { nick, x, y, z, yaw, pitch, alive, mesh }
+let isMonsterPlayer = false; // Am I the monster in monster mode?
+let totalKeys = 0; // shared key count in online
+let spectatorTargetIndex = 0;
+let spectatorTargets = []; // array of uids to spectate
+let onlinePlayers = {}; // uid -> { nick }
+
+// WebRTC
+let peerConnections = {}; // uid -> RTCPeerConnection
+let dataChannels = {}; // uid -> RTCDataChannel
+let signalingUnsubs = [];
+
+// =============================================
+// INPUT (unchanged from original)
+// =============================================
+const input = {
+    joyActive: false, joyId: null, joyX: 0, joyY: 0, startX: 0, startY: 0,
+    camActive: false, camId: null, lastTouchX: 0, lastTouchY: 0,
+    keys: { w: false, a: false, s: false, d: false }
+};
+
+const ui = {
+    joyBase: document.getElementById('joystickBase'),
+    joyStick: document.getElementById('joystickStick'),
+    msg: document.getElementById('messages'),
+    staminaBar: document.getElementById('staminaBar'),
+    keysCount: document.getElementById('keysCount'),
+    btnRun: document.getElementById('btnRun'),
+    aliveCount: document.getElementById('aliveCount')
+};
+
+window.addEventListener('keydown', e => {
+    if (gameState !== 'play' && gameState !== 'spectating') return;
+    let k = e.key.toLowerCase();
+    if(k==='w') input.keys.w = true;
+    if(k==='a') input.keys.a = true;
+    if(k==='s') input.keys.s = true;
+    if(k==='d') input.keys.d = true;
+    if(k==='shift' && !player.exhausted && !isMonsterPlayer) {
+        player.isRunning = true; ui.btnRun.classList.add('active');
+    }
+    if(k==='shift' && isMonsterPlayer && !monster.exhausted) {
+        monster.isRunning = true; ui.btnRun.classList.add('active');
+    }
+    if(e.code==='Space') doJump();
+});
+window.addEventListener('keyup', e => {
+    let k = e.key.toLowerCase();
+    if(k==='w') input.keys.w = false;
+    if(k==='a') input.keys.a = false;
+    if(k==='s') input.keys.s = false;
+    if(k==='d') input.keys.d = false;
+    if(k==='shift') {
+        player.isRunning = false;
+        monster.isRunning = false;
+        ui.btnRun.classList.remove('active');
+    }
+});
+
+window.addEventListener('touchstart', e => {
+    if(gameState !== 'play' && gameState !== 'spectating') return;
+    for(let i=0; i<e.changedTouches.length; i++) {
+        let touch = e.changedTouches[i];
+        if(e.target.classList.contains('action-btn') || e.target.id === 'btnFullscreen') continue;
+        if(e.target.closest('#spectatorBar')) continue;
+        if(touch.clientX < window.innerWidth / 2 && !input.joyActive) {
+            input.joyActive = true; input.joyId = touch.identifier;
+            input.startX = touch.clientX; input.startY = touch.clientY;
+            ui.joyBase.style.display = 'block';
+            ui.joyBase.style.left = touch.clientX + 'px';
+            ui.joyBase.style.top = touch.clientY + 'px';
+            ui.joyStick.style.left = '50%'; ui.joyStick.style.top = '50%';
+        } else if (touch.clientX >= window.innerWidth / 2 && !input.camActive) {
+            input.camActive = true; input.camId = touch.identifier;
+            input.lastTouchX = touch.clientX; input.lastTouchY = touch.clientY;
+        }
+    }
+}, {passive: false});
+
+window.addEventListener('touchmove', e => {
+    if(gameState !== 'play' && gameState !== 'spectating') return;
+    for(let i=0; i<e.changedTouches.length; i++) {
+        let touch = e.changedTouches[i];
+        if(input.joyActive && touch.identifier === input.joyId) {
+            let dx = touch.clientX - input.startX;
+            let dy = touch.clientY - input.startY;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            let maxDist = 40;
+            if(dist > maxDist) { dx = (dx/dist)*maxDist; dy = (dy/dist)*maxDist; }
+            ui.joyStick.style.left = `calc(50% + ${dx}px)`;
+            ui.joyStick.style.top = `calc(50% + ${dy}px)`;
+            input.joyX = dx / maxDist; input.joyY = -dy / maxDist;
+        } else if(input.camActive && touch.identifier === input.camId) {
+            let deltaX = touch.clientX - input.lastTouchX;
+            let deltaY = touch.clientY - input.lastTouchY;
+            if (gameState === 'play') {
+                if (isMonsterPlayer) {
+                    monster.yaw -= deltaX * 0.005;
+                    monster.pitch -= deltaY * 0.005;
+                    monster.pitch = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, monster.pitch));
+                } else {
+                    player.yaw -= deltaX * 0.005;
+                    player.pitch -= deltaY * 0.005;
+                    player.pitch = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, player.pitch));
+                }
+            }
+            input.lastTouchX = touch.clientX; input.lastTouchY = touch.clientY;
+        }
+    }
+}, {passive: false});
+
+function handleTouchEnd(e) {
+    for(let i=0; i<e.changedTouches.length; i++) {
+        let touch = e.changedTouches[i];
+        if(input.joyActive && touch.identifier === input.joyId) {
+            input.joyActive = false; input.joyId = null;
+            input.joyX = 0; input.joyY = 0;
+            ui.joyBase.style.display = 'none';
+        } else if(input.camActive && touch.identifier === input.camId) {
+            input.camActive = false; input.camId = null;
+        }
+    }
+}
+window.addEventListener('touchend', handleTouchEnd);
+window.addEventListener('touchcancel', handleTouchEnd);
+
+document.getElementById('btnFlashlight').addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    player.flashlightOn = !player.flashlightOn;
+    e.target.classList.toggle('active', player.flashlightOn);
+});
+document.getElementById('btnRun').addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (isMonsterPlayer) {
+        if(!monster.exhausted) { monster.isRunning = !monster.isRunning; e.target.classList.toggle('active', monster.isRunning); }
+    } else {
+        if(!player.exhausted) { player.isRunning = !player.isRunning; e.target.classList.toggle('active', player.isRunning); }
+    }
+});
+
+function doJump() {
+    if (isMonsterPlayer) {
+        if(monster.isGrounded) { monster.vy = player.jumpPower; monster.isGrounded = false; synth.jump(); }
+    } else {
+        if(player.isGrounded) { player.vy = player.jumpPower; player.isGrounded = false; synth.jump(); }
+    }
+}
+document.getElementById('btnJump').addEventListener('touchstart', (e) => { e.preventDefault(); doJump(); });
+
+document.getElementById('btnFullscreen').addEventListener('click', () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+    else document.exitFullscreen();
+});
+
+window.addEventListener('resize', () => {
+    if (camera && renderer) {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+});
+
+// Spectator controls
+document.getElementById('specPrev').addEventListener('click', () => {
+    if (spectatorTargets.length === 0) return;
+    spectatorTargetIndex = (spectatorTargetIndex - 1 + spectatorTargets.length) % spectatorTargets.length;
+    updateSpectatorNick();
+});
+document.getElementById('specNext').addEventListener('click', () => {
+    if (spectatorTargets.length === 0) return;
+    spectatorTargetIndex = (spectatorTargetIndex + 1) % spectatorTargets.length;
+    updateSpectatorNick();
+});
+function updateSpectatorNick() {
+    if (spectatorTargets.length === 0) return;
+    let uid = spectatorTargets[spectatorTargetIndex];
+    let nick = '???';
+    if (uid === 'monster') nick = 'Монстр';
+    else if (remotePlayers[uid]) nick = remotePlayers[uid].nick;
+    else if (uid === currentUser.uid) nick = currentUser.nick;
+    document.getElementById('specNick').textContent = nick;
+}
+
+// =============================================
+// RESTART / GAME OVER
+// =============================================
+document.getElementById('btnRestart').addEventListener('click', () => {
+    // Cleanup WebRTC
+    Object.values(peerConnections).forEach(pc => pc.close());
+    peerConnections = {};
+    dataChannels = {};
+    signalingUnsubs.forEach(u => u());
+    signalingUnsubs = [];
+    if (currentLobbyId && gameMode !== 'offline') {
+        db.ref('lobbies/' + currentLobbyId + '/players/' + currentUser.uid).remove();
+        if (isHost) db.ref('lobbies/' + currentLobbyId).remove();
+    }
+    currentLobbyId = null;
+    // Reset game
+    if (scene) {
+        while(scene.children.length > 0) scene.remove(scene.children[0]);
+        scene = null;
+    }
+    if (renderer) {
+        renderer.domElement.remove();
+        renderer.dispose();
+        renderer = null;
+    }
+    Object.values(remotePlayers).forEach(rp => {
+        if (rp.mesh) { /* cleaned by scene removal */ }
+    });
+    remotePlayers = {};
+    keysMeshes = [];
+    gameState = 'menu';
+    player.alive = true;
+    player.keys = 0;
+    totalKeys = 0;
+
+    if (isOfflineMode) {
+        hideAll();
+        document.getElementById('authScreen').classList.remove('hidden');
+    } else {
+        goToMainMenu();
+    }
+});
+
+// =============================================
+// PART 2: TEXTURES, 3D, MAP GEN, PLAYER MODELS, WEBRTC
+// =============================================
+
+function createTexture(colorHex, isWall) {
+    const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = colorHex; ctx.fillRect(0,0,128,128);
+    for(let i=0; i<2000; i++) {
+        ctx.fillStyle = seededRandom() > 0.5 ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)';
+        ctx.fillRect(seededRandom()*128, seededRandom()*128, 2, 2);
+    }
+    if (isWall) {
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(0, 120, 128, 8);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
+
+function createPlayerModel(color) {
+    let group = new THREE.Group();
+    let mat = new THREE.MeshLambertMaterial({ color: color });
+    let skinMat = new THREE.MeshLambertMaterial({ color: 0xffcc99 });
+
+    // Torso
+    let torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.3), mat);
+    torso.position.y = 1.2;
+    group.add(torso);
+
+    // Head
+    let head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), skinMat);
+    head.position.y = 1.8;
+    group.add(head);
+
+    // Hair
+    let hairMat = new THREE.MeshLambertMaterial({ color: 0x332211 });
+    let hair = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.15, 0.37), hairMat);
+    hair.position.y = 1.98;
+    group.add(hair);
+
+    // Eyes
+    let eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    let pupilMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
+    let eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.02), eyeMat);
+    eyeL.position.set(-0.08, 1.82, 0.18);
+    let eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.02), eyeMat);
+    eyeR.position.set(0.08, 1.82, 0.18);
+    let pupilL = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), pupilMat);
+    pupilL.position.set(-0.08, 1.82, 0.19);
+    let pupilR = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), pupilMat);
+    pupilR.position.set(0.08, 1.82, 0.19);
+    group.add(eyeL); group.add(eyeR); group.add(pupilL); group.add(pupilR);
+
+    // Arms
+    let armL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.7, 0.15), mat);
+    armL.position.set(-0.35, 1.15, 0);
+    group.add(armL);
+    let armR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.7, 0.15), mat);
+    armR.position.set(0.35, 1.15, 0);
+    group.add(armR);
+
+    // Legs
+    let legMat = new THREE.MeshLambertMaterial({ color: 0x333355 });
+    let legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.18), legMat);
+    legL.position.set(-0.12, 0.45, 0);
+    group.add(legL);
+    let legR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.7, 0.18), legMat);
+    legR.position.set(0.12, 0.45, 0);
+    group.add(legR);
+
+    // Nickname sprite placeholder
+    group.userData.armL = armL;
+    group.userData.armR = armR;
+    group.userData.legL = legL;
+    group.userData.legR = legR;
+    group.userData.bobTimer = 0;
+
+    return group;
+}
+
+function createNickSprite(nick) {
+    let canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 64;
+    let ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.font = 'bold 28px Courier New';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText(nick, 128, 42);
+    let tex = new THREE.CanvasTexture(canvas);
+    let spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    let sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(2, 0.5, 1);
+    sprite.position.y = 2.3;
+    return sprite;
+}
+
+function animatePlayerModel(group, dt, isMoving) {
+    if (!group.userData.armL) return;
+    if (isMoving) {
+        group.userData.bobTimer += dt * 8;
+    }
+    let t = group.userData.bobTimer;
+    group.userData.armL.rotation.x = Math.sin(t) * 0.4;
+    group.userData.armR.rotation.x = Math.sin(t + Math.PI) * 0.4;
+    group.userData.legL.rotation.x = Math.sin(t + Math.PI) * 0.35;
+    group.userData.legR.rotation.x = Math.sin(t) * 0.35;
+}
+
+const playerColors = [0x3366cc, 0xcc3333, 0x33cc33, 0xcccc33, 0xcc33cc, 0x33cccc];
+let colorIndex = 0;
+function getNextColor() {
+    let c = playerColors[colorIndex % playerColors.length];
+    colorIndex++;
+    return c;
+}
+
+// =============================================
+// MAP GENERATION (unchanged logic, uses seededRandom)
+// =============================================
+function generateBackrooms(seed) {
+    setSeed(seed);
+
+    mapData = Array(MAP_SIZE).fill(0).map(() => Array(MAP_SIZE).fill(1));
+
+    let stack = [];
+    let startX = 1; let startZ = 1;
+    mapData[startZ][startX] = 0;
+    stack.push({x: startX, z: startZ});
+
+    while(stack.length > 0) {
+        let curr = stack[stack.length - 1];
+        let neighbors = [];
+        const dirs = [[0, -2], [0, 2], [-2, 0], [2, 0]];
+        for(let d of dirs) {
+            let nx = curr.x + d[0]; let nz = curr.z + d[1];
+            if(nx > 0 && nx < MAP_SIZE-1 && nz > 0 && nz < MAP_SIZE-1 && mapData[nz][nx] === 1) {
+                neighbors.push({x: nx, z: nz, dx: d[0]/2, dz: d[1]/2});
+            }
+        }
+        if(neighbors.length > 0) {
+            let next = neighbors[Math.floor(seededRandom() * neighbors.length)];
+            mapData[curr.z + next.dz][curr.x + next.dx] = 0;
+            mapData[next.z][next.x] = 0;
+            stack.push({x: next.x, z: next.z});
+        } else {
+            stack.pop();
+        }
+    }
+
+    for(let z=1; z<MAP_SIZE-1; z++) {
+        for(let x=1; x<MAP_SIZE-1; x++) {
+            if(mapData[z][x] === 1 && seededRandom() < 0.25) {
+                let openNeighbors = 0;
+                if(mapData[z-1][x] === 0) openNeighbors++;
+                if(mapData[z+1][x] === 0) openNeighbors++;
+                if(mapData[z][x-1] === 0) openNeighbors++;
+                if(mapData[z][x+1] === 0) openNeighbors++;
+                if (openNeighbors >= 2) mapData[z][x] = 0;
+            }
+        }
+    }
+
+    for(let i=0; i<MAP_SIZE; i++) {
+        mapData[0][i] = 1; mapData[MAP_SIZE-1][i] = 1;
+        mapData[i][0] = 1; mapData[i][MAP_SIZE-1] = 1;
+    }
+
+    let emptySpots = [];
+    for(let z=1; z<MAP_SIZE-1; z++) {
+        for(let x=1; x<MAP_SIZE-1; x++) {
+            if(mapData[z][x] === 0) emptySpots.push({x: x, z: z});
+        }
+    }
+    // Shuffle with seeded random
+    for (let i = emptySpots.length - 1; i > 0; i--) {
+        let j = Math.floor(seededRandom() * (i + 1));
+        [emptySpots[i], emptySpots[j]] = [emptySpots[j], emptySpots[i]];
+    }
+
+    return emptySpots;
+}
+
+// =============================================
+// 3D SCENE INIT
+// =============================================
+function init3D(seed) {
+    scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x1a1813, 0.08);
+
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 80);
+    camera.rotation.order = 'YXZ';
+
+    renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    document.body.insertBefore(renderer.domElement, document.getElementById('uiLayer'));
+
+    let ambientLight = new THREE.AmbientLight(0x555040, 0.6);
+    scene.add(ambientLight);
+
+    flashlight = new THREE.SpotLight(0xfff8d6, 8.0, 35, Math.PI/4, 0.5, 1.0);
+    scene.add(flashlight);
+    scene.add(flashlight.target);
+
+    window.greenPathGroup = new THREE.Group();
+    scene.add(window.greenPathGroup);
+
+    // Use seededRandom for textures too (seed already set in generateBackrooms)
+    const wallMat = new THREE.MeshLambertMaterial({ map: createTexture('#c9b26d', true) });
+    const floorMat = new THREE.MeshLambertMaterial({ map: createTexture('#756b50', false) });
+    const ceilMat = new THREE.MeshLambertMaterial({ map: createTexture('#a3a3a3', false) });
+    floorMat.map.repeat.set(MAP_SIZE, MAP_SIZE);
+    ceilMat.map.repeat.set(MAP_SIZE, MAP_SIZE);
+
+    let emptySpots = generateBackrooms(seed);
+
+    const planeGeo = new THREE.PlaneGeometry(MAP_SIZE * BLOCK_SIZE, MAP_SIZE * BLOCK_SIZE);
+    const floor = new THREE.Mesh(planeGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(MAP_SIZE*BLOCK_SIZE/2, 0, MAP_SIZE*BLOCK_SIZE/2);
+    scene.add(floor);
+
+    const ceiling = new THREE.Mesh(planeGeo, ceilMat);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(MAP_SIZE*BLOCK_SIZE/2, WALL_HEIGHT, MAP_SIZE*BLOCK_SIZE/2);
+    scene.add(ceiling);
+
+    const wallGeo = new THREE.BoxGeometry(BLOCK_SIZE, WALL_HEIGHT, BLOCK_SIZE);
+    let wallCount = 0;
+    for(let z=0; z<MAP_SIZE; z++) for(let x=0; x<MAP_SIZE; x++) if(mapData[z][x] === 1) wallCount++;
+
+    const instancedWalls = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
+    let dummy = new THREE.Object3D();
+    let wallIdx = 0;
+    for(let z=0; z<MAP_SIZE; z++) {
+        for(let x=0; x<MAP_SIZE; x++) {
+            if(mapData[z][x] === 1) {
+                dummy.position.set(x * BLOCK_SIZE, WALL_HEIGHT/2, z * BLOCK_SIZE);
+                dummy.updateMatrix();
+                instancedWalls.setMatrixAt(wallIdx++, dummy.matrix);
+            }
+        }
+    }
+    scene.add(instancedWalls);
+
+    return emptySpots;
+}
+
+function placeEntities(emptySpots, playerList, isOnline) {
+    // Determine spawn positions for all players
+    let spotIdx = 0;
+
+    if (!isOnline) {
+        // Offline: single player
+        let pSpot = emptySpots[spotIdx++];
+        player.x = pSpot.x * BLOCK_SIZE; player.z = pSpot.z * BLOCK_SIZE;
+        player.y = 1.6; player.yaw = 0; player.pitch = 0;
+        player.alive = true; player.keys = 0;
+        player.stamina = 100; player.isRunning = false; player.exhausted = false;
+
+        // Monster spawn far from player
+        let mSpot = emptySpots.find(s => Math.hypot(s.x - pSpot.x, s.z - pSpot.z) > 10) || emptySpots[spotIdx++];
+        monster.x = mSpot.x * BLOCK_SIZE; monster.z = mSpot.z * BLOCK_SIZE;
+        monster.path = []; monster.pathIndex = 0;
+        monster.lastKnownPlayer = null; monster.wanderTarget = null;
+        monster.tpTimer = 6; monster.stuckTimer = 0;
+
+        // Keys
+        keysMeshes = [];
+        for(let i=0; i<MAX_KEYS; i++) {
+            let kSpot = emptySpots[spotIdx++];
+            keysMeshes.push({x: kSpot.x, z: kSpot.z, active: true, id: i});
+        }
+
+        // Exit
+        let eSpot = emptySpots[spotIdx++];
+        window.exitDoor = {x: eSpot.x, z: eSpot.z, active: false};
+
+    } else {
+        // Online: assign positions based on sorted UID list
+        let sortedUids = playerList.sort();
+        let myIdx = sortedUids.indexOf(currentUser.uid);
+
+        // All players spawn
+        for(let i = 0; i < sortedUids.length; i++) {
+            let sp = emptySpots[spotIdx++];
+            if (sortedUids[i] === currentUser.uid) {
+                if (isMonsterPlayer) {
+                    // Monster player starts far
+                    let farSpot = emptySpots.find(s => {
+                        let minD = Infinity;
+                        for(let j=0; j<sortedUids.length; j++) {
+                            if (j === i) continue;
+                            let os = emptySpots[j];
+                            minD = Math.min(minD, Math.hypot(s.x-os.x, s.z-os.z));
+                        }
+                        return minD > 8;
+                    }) || emptySpots[spotIdx + sortedUids.length + 5];
+                    monster.x = farSpot.x * BLOCK_SIZE;
+                    monster.z = farSpot.z * BLOCK_SIZE;
+                    monster.y = 1.6; monster.yaw = 0; monster.pitch = 0;
+                    monster.isGrounded = true; monster.vy = 0;
+                    monster.stamina = 100; monster.isRunning = false; monster.exhausted = false;
+                    monster.highlightTimer = 10; monster.highlightActive = false;
+                } else {
+                    player.x = sp.x * BLOCK_SIZE; player.z = sp.z * BLOCK_SIZE;
+                    player.y = 1.6; player.yaw = 0; player.pitch = 0;
+                    player.alive = true; player.keys = 0;
+                    player.stamina = 100; player.isRunning = false; player.exhausted = false;
+                }
+            } else {
+                // Remote player initial pos
+                remotePlayers[sortedUids[i]] = remotePlayers[sortedUids[i]] || {};
+                remotePlayers[sortedUids[i]].x = sp.x * BLOCK_SIZE;
+                remotePlayers[sortedUids[i]].y = 1.6;
+                remotePlayers[sortedUids[i]].z = sp.z * BLOCK_SIZE;
+                remotePlayers[sortedUids[i]].yaw = 0;
+                remotePlayers[sortedUids[i]].pitch = 0;
+                remotePlayers[sortedUids[i]].alive = true;
+            }
+        }
+
+        // AI monster for normal mode
+        if (gameMode === 'online_normal') {
+            let mSpot = emptySpots[spotIdx + sortedUids.length + 3];
+            monster.x = mSpot.x * BLOCK_SIZE; monster.z = mSpot.z * BLOCK_SIZE;
+            monster.path = []; monster.pathIndex = 0;
+            monster.lastKnownPlayer = null; monster.wanderTarget = null;
+            monster.tpTimer = 6; monster.stuckTimer = 0;
+        }
+
+        // Keys
+        keysMeshes = [];
+        let keyStart = spotIdx + sortedUids.length + 10;
+        for(let i=0; i<MAX_KEYS; i++) {
+            let kSpot = emptySpots[keyStart + i];
+            if (kSpot) keysMeshes.push({x: kSpot.x, z: kSpot.z, active: true, id: i});
+        }
+
+        // Exit
+        let eSpot = emptySpots[keyStart + MAX_KEYS + 1];
+        if (eSpot) window.exitDoor = {x: eSpot.x, z: eSpot.z, active: false};
+        else window.exitDoor = {x: emptySpots[emptySpots.length-1].x, z: emptySpots[emptySpots.length-1].z, active: false};
+
+        totalKeys = 0;
+    }
+
+    // === CREATE 3D OBJECTS ===
+
+    // Keys meshes
+    const keyGeo = new THREE.BoxGeometry(0.8, 0.1, 0.6);
+    const keyMat = new THREE.MeshBasicMaterial({ color: 0x2266ff });
+    keysMeshes.forEach(k => {
+        let mesh = new THREE.Mesh(keyGeo, keyMat);
+        mesh.position.set(k.x * BLOCK_SIZE, 0.5, k.z * BLOCK_SIZE);
+        scene.add(mesh);
+        k.mesh = mesh;
+    });
+
+    // Monster model (AI or visual for monster-mode)
+    monsterGroup = new THREE.Group();
+    const mMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+
+    let torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.4), mMat);
+    torso.position.y = 1.6;
+    monsterGroup.add(torso);
+
+    let head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), mMat);
+    head.position.y = 2.7;
+    head.rotation.z = 0.2; head.rotation.x = 0.1;
+    monsterGroup.add(head);
+
+    let eyeMatM = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    let eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMatM);
+    eyeL.position.set(-0.15, 2.75, 0.26);
+    let eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMatM);
+    eyeR.position.set(0.15, 2.7, 0.26);
+    monsterGroup.add(eyeL); monsterGroup.add(eyeR);
+
+    mArmL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.8, 0.15), mMat);
+    mArmL.position.set(-0.4, 1.4, 0);
+    mArmR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.8, 0.15), mMat);
+    mArmR.position.set(0.4, 1.4, 0);
+    monsterGroup.add(mArmL); monsterGroup.add(mArmR);
+
+    mLegL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.4, 0.2), mMat);
+    mLegL.position.set(-0.2, 0.7, 0);
+    mLegR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.4, 0.2), mMat);
+    mLegR.position.set(0.2, 0.7, 0);
+    monsterGroup.add(mLegL); monsterGroup.add(mLegR);
+
+    monsterGroup.position.set(monster.x, 0, monster.z);
+
+    // If I am the monster, don't show the monster model to myself in first person
+    if (isMonsterPlayer) {
+        monsterGroup.visible = false;
+    }
+    scene.add(monsterGroup);
+
+    // Exit door
+    const doorGeo = new THREE.BoxGeometry(BLOCK_SIZE*0.8, WALL_HEIGHT*0.8, 0.2);
+    const doorMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 });
+    exitMesh = new THREE.Mesh(doorGeo, doorMat);
+    exitMesh.position.set(exitDoor.x * BLOCK_SIZE, WALL_HEIGHT*0.4, exitDoor.z * BLOCK_SIZE);
+    exitMesh.visible = false;
+    scene.add(exitMesh);
+
+    // Remote player models
+    if (isOnline) {
+        colorIndex = 0;
+        let sortedUids = Object.keys(remotePlayers).sort();
+        sortedUids.forEach(uid => {
+            let rp = remotePlayers[uid];
+            let color = getNextColor();
+            let model = createPlayerModel(color);
+            model.position.set(rp.x, 0, rp.z);
+            scene.add(model);
+            rp.mesh = model;
+
+            // Nick sprite
+            if (rp.nick) {
+                let nickSprite = createNickSprite(rp.nick);
+                model.add(nickSprite);
+            }
+        });
+    }
+}
+
+// =============================================
+// COLLISION / PATHFINDING (unchanged from original)
+// =============================================
+function isWall(gx, gz) {
+    if(gx < 0 || gx >= MAP_SIZE || gz < 0 || gz >= MAP_SIZE) return true;
+    return mapData[Math.floor(gz)][Math.floor(gx)] === 1;
+}
+
+function canMoveTo(nx, nz, radius) {
+    let col = Math.round(nx / BLOCK_SIZE); let row = Math.round(nz / BLOCK_SIZE);
+    for(let z = row-1; z <= row+1; z++) {
+        for(let x = col-1; x <= col+1; x++) {
+            if(isWall(x, z)) {
+                let wallX = x * BLOCK_SIZE; let wallZ = z * BLOCK_SIZE; let hs = BLOCK_SIZE / 2;
+                if (nx + radius > wallX - hs && nx - radius < wallX + hs &&
+                    nz + radius > wallZ - hs && nz - radius < wallZ + hs) return false;
+            }
+        }
+    }
+    return true;
+}
+
+function hasLineOfSight(x0, z0, x1, z1) {
+    let gx0 = Math.floor(x0 / BLOCK_SIZE); let gz0 = Math.floor(z0 / BLOCK_SIZE);
+    let gx1 = Math.floor(x1 / BLOCK_SIZE); let gz1 = Math.floor(z1 / BLOCK_SIZE);
+    let dx = Math.abs(gx1 - gx0); let dz = Math.abs(gz1 - gz0);
+    let sx = (gx0 < gx1) ? 1 : -1; let sz = (gz0 < gz1) ? 1 : -1;
+    let err = dx - dz;
+    while(true) {
+        if(isWall(gx0, gz0)) return false;
+        if(gx0 === gx1 && gz0 === gz1) return true;
+        let e2 = 2 * err;
+        if(e2 > -dz) { err -= dz; gx0 += sx; }
+        if(e2 < dx) { err += dx; gz0 += sz; }
+    }
+}
+
+function gridNeighbors(node) {
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    const res = [];
+    for (let d of dirs) {
+        const nx = node.x + d[0], nz = node.z + d[1];
+        if (nx >= 1 && nx < MAP_SIZE-1 && nz >= 1 && nz < MAP_SIZE-1 && mapData[nz][nx] === 0) {
+            res.push({x: nx, z: nz});
+        }
+    }
+    return res;
+}
+
+function heuristic(a, b) {
+    return Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+}
+
+function astar(start, goal, maxNodes) {
+    maxNodes = maxNodes || 2000;
+    const key = (n) => `${n.x},${n.z}`;
+    let open = [{node: start, f: heuristic(start, goal), g:0}];
+    let cameFrom = {};
+    let gScore = {}; gScore[key(start)] = 0;
+    let closed = new Set();
+    let nodesProcessed = 0;
+    while (open.length > 0 && nodesProcessed < maxNodes) {
+        open.sort((a,b) => a.f - b.f);
+        let current = open.shift().node;
+        nodesProcessed++;
+        if (current.x === goal.x && current.z === goal.z) {
+            let path = [];
+            let curKey = key(current);
+            while (cameFrom[curKey]) {
+                path.push(current);
+                current = cameFrom[curKey];
+                curKey = key(current);
+            }
+            path.reverse();
+            return path;
+        }
+        closed.add(key(current));
+        for (let neigh of gridNeighbors(current)) {
+            let nkey = key(neigh);
+            if (closed.has(nkey)) continue;
+            let tentativeG = gScore[key(current)] + 1;
+            if (gScore[nkey] === undefined || tentativeG < gScore[nkey]) {
+                cameFrom[nkey] = current;
+                gScore[nkey] = tentativeG;
+                let f = tentativeG + heuristic(neigh, goal);
+                if (!open.some(o => o.node.x===neigh.x && o.node.z===neigh.z)) {
+                    open.push({node: neigh, f: f, g: tentativeG});
+                }
+            }
+        }
+    }
+    return [];
+}
+
+function worldToGrid(wx, wz) {
+    return { x: Math.round(wx / BLOCK_SIZE), z: Math.round(wz / BLOCK_SIZE) };
+}
+
+function teleportMonsterNear(targetX, targetZ) {
+    let validSpots = [];
+    for(let z=1; z<MAP_SIZE-1; z++) {
+        for(let x=1; x<MAP_SIZE-1; x++) {
+            if(mapData[z][x] === 0) {
+                let dist = Math.hypot(x*BLOCK_SIZE - targetX, z*BLOCK_SIZE - targetZ);
+                if(dist >= 12 && dist <= 20) {
+                    if(!hasLineOfSight(x*BLOCK_SIZE, z*BLOCK_SIZE, targetX, targetZ)) {
+                        validSpots.push({x: x, z: z});
+                    }
+                }
+            }
+        }
+    }
+    if(validSpots.length === 0) {
+        for(let z=1; z<MAP_SIZE-1; z++) {
+            for(let x=1; x<MAP_SIZE-1; x++) {
+                if(mapData[z][x] === 0 && !hasLineOfSight(x*BLOCK_SIZE, z*BLOCK_SIZE, targetX, targetZ)) {
+                    validSpots.push({x: x, z: z});
+                }
+            }
+        }
+    }
+    if(validSpots.length > 0) {
+        let spot = validSpots[Math.floor(Math.random() * validSpots.length)];
+        monster.x = spot.x * BLOCK_SIZE;
+        monster.z = spot.z * BLOCK_SIZE;
+    }
+    monster.path = []; monster.pathIndex = 0;
+    monster.repathTimer = 0;
+    monster.lastKnownPlayer = null;
+    monster.wanderTarget = null;
+}
+
+const pathMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4 });
+const pathGeo = new THREE.PlaneGeometry(BLOCK_SIZE * 0.4, BLOCK_SIZE * 0.4);
+let playerLastGridX = -1;
+let playerLastGridZ = -1;
+
+function drawGreenPath(px, pz, ex, ez) {
+    while(window.greenPathGroup.children.length > 0){
+        window.greenPathGroup.remove(window.greenPathGroup.children[0]);
+    }
+    let start = worldToGrid(px, pz);
+    let goal = worldToGrid(ex, ez);
+    let path = astar(start, goal, 5000);
+    if(path && path.length > 0) {
+        path.forEach(node => {
+            let p = new THREE.Mesh(pathGeo, pathMat);
+            p.rotation.x = -Math.PI / 2;
+            p.position.set(node.x * BLOCK_SIZE, 0.05, node.z * BLOCK_SIZE);
+            window.greenPathGroup.add(p);
+        });
+    }
+}
+
+function showMessage(text) {
+    ui.msg.textContent = text;
+    ui.msg.style.opacity = 1;
+    msgTimer = 2.0;
+}
+
+function showHighlight(text) {
+    let el = document.getElementById('highlightMsg');
+    el.textContent = text;
+    el.style.opacity = 1;
+    highlightTimer = 6.0;
+}
+
+// =============================================
+// WEBRTC SIGNALING VIA FIREBASE
+// =============================================
+const rtcConfig = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+    ]
+};
+
+function setupWebRTC(playerUids) {
+    // playerUids: all uids in the game (including me)
+    let otherUids = playerUids.filter(u => u !== currentUser.uid);
+
+    otherUids.forEach(remoteUid => {
+        let isCaller = currentUser.uid < remoteUid; // deterministic who calls
+
+        let pc = new RTCPeerConnection(rtcConfig);
+        peerConnections[remoteUid] = pc;
+
+        // Create data channel (caller creates, callee receives)
+        if (isCaller) {
+            let dc = pc.createDataChannel('game');
+            setupDataChannel(dc, remoteUid);
+        } else {
+            pc.ondatachannel = (e) => {
+                setupDataChannel(e.channel, remoteUid);
+            };
+        }
+
+        pc.onicecandidate = (e) => {
+            if (e.candidate) {
+                db.ref(`lobbies/${currentLobbyId}/signaling/${currentUser.uid}_to_${remoteUid}/candidates`).push(e.candidate.toJSON());
+            }
+        };
+
+        pc.onconnectionstatechange = () => {
+            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                console.log('WebRTC disconnected from', remoteUid);
+            }
+        };
+
+        if (isCaller) {
+            pc.createOffer().then(offer => {
+                pc.setLocalDescription(offer);
+                db.ref(`lobbies/${currentLobbyId}/signaling/${currentUser.uid}_to_${remoteUid}/offer`).set(offer.toJSON());
+            });
+
+            // Listen for answer
+            let ansRef = db.ref(`lobbies/${currentLobbyId}/signaling/${remoteUid}_to_${currentUser.uid}/answer`);
+            ansRef.on('value', snap => {
+                if (snap.exists() && pc.signalingState !== 'stable') {
+                    pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+                }
+            });
+            signalingUnsubs.push(() => ansRef.off());
+
+        } else {
+            // Listen for offer
+            let offRef = db.ref(`lobbies/${currentLobbyId}/signaling/${remoteUid}_to_${currentUser.uid}/offer`);
+            offRef.on('value', snap => {
+                if (snap.exists()) {
+                    let offer = snap.val();
+                    pc.setRemoteDescription(new RTCSessionDescription(offer)).then(() => {
+                        return pc.createAnswer();
+                    }).then(answer => {
+                        pc.setLocalDescription(answer);
+                        db.ref(`lobbies/${currentLobbyId}/signaling/${currentUser.uid}_to_${remoteUid}/answer`).set(answer.toJSON());
+                    });
+                }
+            });
+            signalingUnsubs.push(() => offRef.off());
+        }
+
+        // Listen for ICE candidates
+        let candRef = db.ref(`lobbies/${currentLobbyId}/signaling/${remoteUid}_to_${currentUser.uid}/candidates`);
+        candRef.on('child_added', snap => {
+            pc.addIceCandidate(new RTCIceCandidate(snap.val())).catch(()=>{});
+        });
+        signalingUnsubs.push(() => candRef.off());
+    });
+}
+
+function setupDataChannel(dc, remoteUid) {
+    dataChannels[remoteUid] = dc;
+    dc.onopen = () => {
+        console.log('DataChannel open with', remoteUid);
+    };
+    dc.onmessage = (e) => {
+        handleNetworkMessage(remoteUid, JSON.parse(e.data));
+    };
+    dc.onclose = () => {
+        console.log('DataChannel closed with', remoteUid);
+    };
+}
+
+function broadcastToAll(msg) {
+    let data = JSON.stringify(msg);
+    Object.values(dataChannels).forEach(dc => {
+        if (dc.readyState === 'open') {
+            try { dc.send(data); } catch(e) {}
+        }
+    });
+}
+
+function sendToOne(uid, msg) {
+    let dc = dataChannels[uid];
+    if (dc && dc.readyState === 'open') {
+        try { dc.send(JSON.stringify(msg)); } catch(e) {}
+    }
+}
+
+// =============================================
+// NETWORK MESSAGE HANDLER
+// =============================================
+function handleNetworkMessage(fromUid, msg) {
+    switch(msg.type) {
+        case 'pos': // Player position update
+            if (remotePlayers[fromUid]) {
+                remotePlayers[fromUid].x = msg.x;
+                remotePlayers[fromUid].y = msg.y;
+                remotePlayers[fromUid].z = msg.z;
+                remotePlayers[fromUid].yaw = msg.yaw;
+                remotePlayers[fromUid].pitch = msg.pitch;
+                remotePlayers[fromUid].alive = msg.alive;
+                remotePlayers[fromUid].isMoving = msg.moving;
+            }
+            break;
+
+        case 'monster_pos': // Monster position (from host or monster-player)
+            if (fromUid !== currentUser.uid) {
+                monster.x = msg.x;
+                monster.z = msg.z;
+                monster.dirX = msg.dx;
+                monster.dirZ = msg.dz;
+                monster.bobTimer = msg.bob;
+                if (msg.my !== undefined) {
+                    monster.y = msg.my;
+                    monster.yaw = msg.myaw;
+                }
+            }
+            break;
+
+        case 'key_collected': // A key was collected
+            let kid = msg.id;
+            keysMeshes.forEach(k => {
+                if (k.id === kid && k.active) {
+                    k.active = false;
+                    if (k.mesh) k.mesh.visible = false;
+                }
+            });
+            totalKeys = msg.total;
+            ui.keysCount.textContent = `Папки: ${totalKeys}/${MAX_KEYS}`;
+            if (totalKeys >= MAX_KEYS && exitDoor) {
+                exitDoor.active = true;
+                if (exitMesh) exitMesh.visible = true;
+                showMessage("Выход открыт!");
+            }
+            break;
+
+        case 'player_died':
+            if (remotePlayers[msg.uid]) {
+                remotePlayers[msg.uid].alive = false;
+                if (remotePlayers[msg.uid].mesh) {
+                    remotePlayers[msg.uid].mesh.visible = false;
+                }
+            }
+            updateAliveCount();
+            break;
+
+        case 'kill_player': // Monster mode: monster kills me
+            if (msg.target === currentUser.uid && player.alive) {
+                playerDied();
+            }
+            break;
+
+        case 'highlight': // Monster mode: show player positions
+            if (!isMonsterPlayer) {
+                showHighlight("Монстр видит ваши позиции!");
+            }
+            break;
+
+        case 'game_win':
+            gameState = 'win';
+            document.getElementById('endTitle').textContent = "ВЫЖИВШИЕ ПОБЕДИЛИ!";
+            document.getElementById('endTitle').style.color = "#00aa00";
+            document.getElementById('endText').textContent = "Выход найден.";
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+            break;
+
+        case 'all_dead':
+            if (gameState === 'play' || gameState === 'spectating') {
+                gameState = 'over';
+                document.getElementById('endTitle').textContent = "ВСЕ ПОГИБЛИ";
+                document.getElementById('endTitle').style.color = "#8a0303";
+                document.getElementById('endText').textContent = "Никто не выжил.";
+                document.getElementById('gameOverScreen').classList.remove('hidden');
+            }
+            break;
+    }
+}
+
+function updateAliveCount() {
+    if (gameMode === 'offline') return;
+    let alive = 0;
+    if (player.alive && !isMonsterPlayer) alive++;
+    Object.values(remotePlayers).forEach(rp => {
+        if (rp.alive) alive++;
+    });
+    ui.aliveCount.textContent = `Выжившие: ${alive}`;
+}
+
+function playerDied() {
+    player.alive = false;
+    gameState = 'spectating';
+
+    synth.screamer();
+    const screamer = document.getElementById('screamerLayer');
+    screamer.style.display = 'block';
+
+    setTimeout(() => {
+        screamer.style.display = 'none';
+
+        // Broadcast death
+        broadcastToAll({ type: 'player_died', uid: currentUser.uid });
+
+        // Setup spectator
+        buildSpectatorTargets();
+        if (spectatorTargets.length > 0) {
+            spectatorTargetIndex = 0;
+            updateSpectatorNick();
+            document.getElementById('spectatorBar').style.display = 'block';
+        }
+
+        updateAliveCount();
+        checkAllDead();
+    }, 1200);
+}
+
+function buildSpectatorTargets() {
+    spectatorTargets = [];
+    // Add alive remote players
+    Object.keys(remotePlayers).forEach(uid => {
+        if (remotePlayers[uid].alive) spectatorTargets.push(uid);
+    });
+    // Add monster (always can spectate)
+    spectatorTargets.push('monster');
+}
+
+function checkAllDead() {
+    if (gameMode === 'offline') return;
+    let anyAlive = false;
+    if (player.alive && !isMonsterPlayer) anyAlive = true;
+    Object.values(remotePlayers).forEach(rp => {
+        if (rp.alive) anyAlive = true;
+    });
+    if (!anyAlive && isHost) {
+        broadcastToAll({ type: 'all_dead' });
+    }
+}
+
+// =============================================
+// OFFLINE START
+// =============================================
+document.getElementById('btnStartOffline').addEventListener('click', () => {
+    difficulty = document.getElementById('diffSelect').value;
+    let seed = document.getElementById('offlineSeed').value.trim();
+    gameMode = 'offline';
+    isMonsterPlayer = false;
+    MAX_KEYS = 8;
+
+    synth.init();
+
+    let emptySpots = init3D(seed);
+    placeEntities(emptySpots, [], false);
+
+    hideAll();
+    document.getElementById('uiLayer').classList.remove('hidden');
+    ui.keysCount.textContent = `Папки: 0/${MAX_KEYS}`;
+    ui.aliveCount.classList.add('hidden');
+
+    gameState = 'play';
+    requestAnimationFrame((t) => { lastTime = t; requestAnimationFrame(loop); });
+});
+
+// =============================================
+// MULTIPLAYER START
+// =============================================
+function startMultiplayerGame(lobbyData) {
+    synth.init();
+
+    difficulty = lobbyData.difficulty;
+    let seed = lobbyData.seed;
+    let playerUids = Object.keys(lobbyData.players);
+    let maxP = lobbyData.maxPlayers;
+
+    MAX_KEYS = playerUids.length <= 2 ? 8 : 15;
+
+    if (lobbyData.mode === 'normal') {
+        gameMode = 'online_normal';
+        isMonsterPlayer = false;
+    } else {
+        gameMode = 'online_monster';
+        // Deterministic monster selection based on seed
+        let monsterIdx = 0;
+        let seedNum = 0;
+        for(let i=0; i<seed.length; i++) seedNum += seed.charCodeAt(i);
+        monsterIdx = seedNum % playerUids.length;
+        let sortedUids = playerUids.sort();
+        let monsterUid = sortedUids[monsterIdx];
+        isMonsterPlayer = (monsterUid === currentUser.uid);
+
+        // Set nicks for remote players
+        sortedUids.forEach(uid => {
+            if (uid !== currentUser.uid) {
+                remotePlayers[uid] = remotePlayers[uid] || {};
+                remotePlayers[uid].nick = lobbyData.players[uid].nick;
+                remotePlayers[uid].alive = true;
+                remotePlayers[uid].isMonster = (uid === monsterUid);
+            }
+        });
+
+        onlinePlayers = {};
+        Object.keys(lobbyData.players).forEach(uid => {
+            onlinePlayers[uid] = { nick: lobbyData.players[uid].nick };
+        });
+    }
+
+    // Set nicks for all remote players
+    playerUids.forEach(uid => {
+        if (uid !== currentUser.uid) {
+            remotePlayers[uid] = remotePlayers[uid] || {};
+            remotePlayers[uid].nick = lobbyData.players[uid].nick;
+            remotePlayers[uid].alive = true;
+        }
+    });
+
+    let emptySpots = init3D(seed);
+    placeEntities(emptySpots, playerUids, true);
+
+    // Setup WebRTC
+    setupWebRTC(playerUids);
+
+    hideAll();
+    document.getElementById('uiLayer').classList.remove('hidden');
+    ui.keysCount.textContent = `Папки: 0/${MAX_KEYS}`;
+    ui.aliveCount.classList.remove('hidden');
+    updateAliveCount();
+
+    if (isMonsterPlayer) {
+        showMessage("Вы — МОНСТР! Ловите игроков!");
+        monsterGroup.visible = false; // Don't show own model
+    }
+
+    gameState = 'play';
+    requestAnimationFrame((t) => { lastTime = t; requestAnimationFrame(loop); });
+}
+
+// =============================================
+// NETWORK SEND TIMER
+// =============================================
+let netSendTimer = 0;
+const NET_SEND_RATE = 0.05; // 20 times per second
+
+function sendNetworkUpdates(dt) {
+    if (gameMode === 'offline') return;
+    netSendTimer += dt;
+    if (netSendTimer < NET_SEND_RATE) return;
+    netSendTimer = 0;
+
+    if (isMonsterPlayer) {
+        // Send monster position
+        broadcastToAll({
+            type: 'monster_pos',
+            x: monster.x, z: monster.z,
+            dx: monster.dirX, dz: monster.dirZ,
+            bob: monster.bobTimer,
+            my: monster.y, myaw: monster.yaw
+        });
+    } else if (player.alive) {
+        // Send player position
+        broadcastToAll({
+            type: 'pos',
+            x: player.x, y: player.y, z: player.z,
+            yaw: player.yaw, pitch: player.pitch,
+            alive: player.alive,
+            moving: (Math.abs(input.joyX) > 0.1 || Math.abs(input.joyY) > 0.1 ||
+                     input.keys.w || input.keys.s || input.keys.a || input.keys.d)
+        });
+    }
+
+    // Host sends AI monster position in normal mode
+    if (isHost && gameMode === 'online_normal') {
+        broadcastToAll({
+            type: 'monster_pos',
+            x: monster.x, z: monster.z,
+            dx: monster.dirX, dz: monster.dirZ,
+            bob: monster.bobTimer
+        });
+    }
+}
+
+// =============================================
+// END OF PART 2
+// =============================================
+// Part 3 will contain the full game loop:
+// - update() function (offline + online)
+// - AI monster logic (unchanged from original)
+// - Monster player controls
+// - Spectator camera
+// - Remote player rendering
+// - Highlight system for monster mode
+// - loop() function
+
+// =============================================
+// PART 3: GAME LOOP, AI, MONSTER PLAYER, SPECTATOR
+// =============================================
+
+function update(dt) {
+    if (gameState !== 'play' && gameState !== 'spectating') return;
+
+    // Message timers
+    if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) ui.msg.style.opacity = 0; }
+    if (highlightTimer > 0) {
+        highlightTimer -= dt;
+        if (highlightTimer <= 0) document.getElementById('highlightMsg').style.opacity = 0;
+    }
+
+    // ============ PLAYER / MONSTER-PLAYER MOVEMENT ============
+    if (gameState === 'play') {
+        if (isMonsterPlayer) {
+            updateMonsterPlayer(dt);
+        } else if (player.alive) {
+            updateLocalPlayer(dt);
+        }
+    }
+
+    // ============ AI MONSTER (offline + online_normal, host only) ============
+    if (gameMode === 'offline' || (gameMode === 'online_normal' && isHost)) {
+        updateAIMonster(dt);
+    }
+
+    // ============ MONSTER MODE HIGHLIGHT ============
+    if (isMonsterPlayer && gameMode === 'online_monster') {
+        monster.highlightTimer -= dt;
+        if (monster.highlightTimer <= 0) {
+            monster.highlightTimer = 10;
+            monster.highlightActive = true;
+            setTimeout(() => { monster.highlightActive = false; }, 6000);
+            broadcastToAll({ type: 'highlight' });
+        }
+    }
+
+    // ============ UPDATE REMOTE PLAYERS ============
+    updateRemotePlayers(dt);
+
+    // ============ UPDATE KEYS ============
+    updateKeys(dt);
+
+    // ============ EXIT CHECK ============
+    updateExit();
+
+    // ============ MONSTER KILL CHECK ============
+    updateKillCheck(dt);
+
+    // ============ SPECTATOR CAMERA ============
+    if (gameState === 'spectating') {
+        updateSpectatorCamera();
+    }
+
+    // ============ MONSTER MODEL ANIMATION ============
+    updateMonsterModel(dt);
+
+    // ============ FLASHLIGHT ============
+    updateFlashlight();
+
+    // ============ NETWORK SEND ============
+    sendNetworkUpdates(dt);
+
+    // ============ GREEN PATH ============
+    if (exitDoor && exitDoor.active && !isMonsterPlayer) {
+        let srcX = player.alive ? player.x : 0;
+        let srcZ = player.alive ? player.z : 0;
+        if (player.alive) {
+            let pg = worldToGrid(srcX, srcZ);
+            if (pg.x !== playerLastGridX || pg.z !== playerLastGridZ) {
+                playerLastGridX = pg.x;
+                playerLastGridZ = pg.z;
+                drawGreenPath(srcX, srcZ, exitDoor.x * BLOCK_SIZE, exitDoor.z * BLOCK_SIZE);
+            }
+        }
+    }
+
+    renderer.render(scene, camera);
+}
+
+// =============================================
+// LOCAL PLAYER UPDATE (survivors)
+// =============================================
+function updateLocalPlayer(dt) {
+    camera.rotation.y = player.yaw;
+    camera.rotation.x = player.pitch;
+    let trueLookDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    let dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    dir.y = 0; dir.normalize();
+    let side = new THREE.Vector3(-dir.z, 0, dir.x);
+
+    let inputX = input.joyX; let inputY = input.joyY;
+    if (input.keys.w) inputY = 1; if (input.keys.s) inputY = -1;
+    if (input.keys.a) inputX = -1; if (input.keys.d) inputX = 1;
+
+    let length = Math.sqrt(inputX * inputX + inputY * inputY);
+    if (length > 1) { inputX /= length; inputY /= length; }
+
+    let currentSpeed = player.speed;
+    let isMoving = (Math.abs(inputX) > 0.1 || Math.abs(inputY) > 0.1);
+
+    if (player.isRunning && isMoving && !player.exhausted) {
+        currentSpeed *= player.runMult;
+        player.stamina -= 25 * dt;
+        if (player.stamina <= 0) {
+            player.isRunning = false; player.exhausted = true;
+            ui.btnRun.classList.remove('active');
+            ui.staminaBar.classList.add('exhausted');
+        }
+    } else {
+        player.stamina += 15 * dt;
+        if (player.stamina > 25 && player.exhausted) {
+            player.exhausted = false;
+            ui.staminaBar.classList.remove('exhausted');
+        }
+    }
+    player.stamina = Math.max(0, Math.min(100, player.stamina));
+    ui.staminaBar.style.width = player.stamina + '%';
+
+    let dx = (dir.x * inputY + side.x * inputX) * currentSpeed * dt;
+    let dz = (dir.z * inputY + side.z * inputX) * currentSpeed * dt;
+
+    if (canMoveTo(player.x + dx, player.z, player.radius)) player.x += dx;
+    if (canMoveTo(player.x, player.z + dz, player.radius)) player.z += dz;
+
+    player.vy -= player.gravity * dt;
+    player.y += player.vy * dt;
+    if (player.y <= 1.6) {
+        if (!player.isGrounded && player.vy < -2) synth.land();
+        player.y = 1.6; player.vy = 0; player.isGrounded = true;
+    }
+
+    let headBob = 0;
+    if (isMoving && player.isGrounded) {
+        player.walkTimer += dt * currentSpeed;
+        headBob = Math.sin(player.walkTimer * 2.5) * (player.isRunning ? 0.15 : 0.08);
+        if (Math.cos(player.walkTimer * 2.5) < -0.9) {
+            synth.step(); player.walkTimer += 0.5;
+        }
+    }
+
+    camera.position.set(player.x, player.y + headBob, player.z);
+
+    flashlight.position.copy(camera.position);
+    let flashSwayX = Math.sin(performance.now() * 0.002) * 0.05 * (isMoving ? 1 : 0);
+    let flashSwayY = Math.cos(performance.now() * 0.002) * 0.05 * (isMoving ? 1 : 0);
+    flashlight.target.position.copy(camera.position).add(trueLookDir).add(new THREE.Vector3(flashSwayX, flashSwayY, 0));
+}
+
+// =============================================
+// MONSTER PLAYER UPDATE (mode: monster)
+// =============================================
+function updateMonsterPlayer(dt) {
+    camera.rotation.y = monster.yaw;
+    camera.rotation.x = monster.pitch;
+    let trueLookDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    let dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    dir.y = 0; dir.normalize();
+    let side = new THREE.Vector3(-dir.z, 0, dir.x);
+
+    let inputX = input.joyX; let inputY = input.joyY;
+    if (input.keys.w) inputY = 1; if (input.keys.s) inputY = -1;
+    if (input.keys.a) inputX = -1; if (input.keys.d) inputX = 1;
+
+    let length = Math.sqrt(inputX * inputX + inputY * inputY);
+    if (length > 1) { inputX /= length; inputY /= length; }
+
+    let monsterSpeed = 6.0;
+    let isMoving = (Math.abs(inputX) > 0.1 || Math.abs(inputY) > 0.1);
+
+    if (monster.isRunning && isMoving && !monster.exhausted) {
+        monsterSpeed *= 1.6;
+        monster.stamina -= 20 * dt;
+        if (monster.stamina <= 0) {
+            monster.isRunning = false; monster.exhausted = true;
+            ui.btnRun.classList.remove('active');
+            ui.staminaBar.classList.add('exhausted');
+        }
+    } else {
+        monster.stamina += 18 * dt;
+        if (monster.stamina > 25 && monster.exhausted) {
+            monster.exhausted = false;
+            ui.staminaBar.classList.remove('exhausted');
+        }
+    }
+    monster.stamina = Math.max(0, Math.min(100, monster.stamina));
+    ui.staminaBar.style.width = monster.stamina + '%';
+
+    let dx = (dir.x * inputY + side.x * inputX) * monsterSpeed * dt;
+    let dz = (dir.z * inputY + side.z * inputX) * monsterSpeed * dt;
+
+    if (canMoveTo(monster.x + dx, monster.z, 0.3)) monster.x += dx;
+    if (canMoveTo(monster.x, monster.z + dz, 0.3)) monster.z += dz;
+
+    monster.vy -= player.gravity * dt;
+    monster.y += monster.vy * dt;
+    if (monster.y <= 1.6) {
+        if (!monster.isGrounded && monster.vy < -2) synth.land();
+        monster.y = 1.6; monster.vy = 0; monster.isGrounded = true;
+    }
+
+    if (isMoving) {
+        monster.walkTimer += dt * monsterSpeed;
+        monster.bobTimer += dt * monsterSpeed;
+        monster.dirX = dir.x * inputY + side.x * inputX;
+        monster.dirZ = dir.z * inputY + side.z * inputX;
+        let dl = Math.hypot(monster.dirX, monster.dirZ);
+        if (dl > 0) { monster.dirX /= dl; monster.dirZ /= dl; }
+    }
+
+    let headBob = 0;
+    if (isMoving && monster.isGrounded) {
+        headBob = Math.sin(monster.walkTimer * 2.5) * 0.12;
+        if (Math.cos(monster.walkTimer * 2.5) < -0.9) {
+            synth.step(); monster.walkTimer += 0.5;
+        }
+    }
+
+    camera.position.set(monster.x, monster.y + headBob, monster.z);
+
+    flashlight.position.copy(camera.position);
+    flashlight.target.position.copy(camera.position).add(trueLookDir);
+    flashlight.intensity = 3.0; // Monster has dim light
+
+    // Highlight: show player markers
+    if (monster.highlightActive) {
+        Object.values(remotePlayers).forEach(rp => {
+            if (rp.alive && rp.mesh) {
+                // Pulse effect on nick sprite
+                rp.mesh.children.forEach(child => {
+                    if (child.isSprite) {
+                        child.material.color = new THREE.Color(0xff4444);
+                    }
+                });
+            }
+        });
+    } else {
+        Object.values(remotePlayers).forEach(rp => {
+            if (rp.mesh) {
+                rp.mesh.children.forEach(child => {
+                    if (child.isSprite) {
+                        child.material.color = new THREE.Color(0xffffff);
+                    }
+                });
+            }
+        });
+    }
+
+    // Kill check for monster player
+    Object.keys(remotePlayers).forEach(uid => {
+        let rp = remotePlayers[uid];
+        if (rp.alive && !rp.isMonster) {
+            let dist = Math.hypot(monster.x - rp.x, monster.z - rp.z);
+            if (dist < 1.2) {
+                rp.alive = false;
+                if (rp.mesh) rp.mesh.visible = false;
+                sendToOne(uid, { type: 'kill_player', target: uid });
+                broadcastToAll({ type: 'player_died', uid: uid });
+                showMessage(`${rp.nick} пойман!`);
+                updateAliveCount();
+                checkAllDead();
+            }
+        }
+    });
+}
+
+// =============================================
+// AI MONSTER UPDATE (unchanged logic from original)
+// =============================================
+function updateAIMonster(dt) {
+    // Find nearest alive player
+    let targets = [];
+    if (gameMode === 'offline') {
+        if (player.alive) targets.push({ x: player.x, z: player.z, uid: 'local', running: player.isRunning });
+    } else {
+        if (player.alive) targets.push({ x: player.x, z: player.z, uid: currentUser.uid, running: player.isRunning });
+        Object.keys(remotePlayers).forEach(uid => {
+            let rp = remotePlayers[uid];
+            if (rp.alive && !rp.isMonster) {
+                targets.push({ x: rp.x, z: rp.z, uid: uid, running: false });
+            }
+        });
+    }
+
+    if (targets.length === 0) return;
+
+    // Find closest target
+    let closest = null; let closestDist = Infinity;
+    targets.forEach(t => {
+        let d = Math.hypot(t.x - monster.x, t.z - monster.z);
+        if (d < closestDist) { closestDist = d; closest = t; }
+    });
+
+    let mDist = closestDist;
+    let stats = diffStats[difficulty];
+
+    monster.stuckTimer -= dt;
+
+    let hearsPlayer = (closest.running && mDist < 15.0);
+    let seesPlayer = hasLineOfSight(monster.x, monster.z, closest.x, closest.z) && (monster.stuckTimer <= 0);
+
+    let isChasing = seesPlayer || hearsPlayer;
+
+    if (isChasing) {
+        monster.tpTimer = 19.0;
+        monster.lastKnownPlayer = worldToGrid(closest.x, closest.z);
+        monster.speed = stats.c;
+    } else {
+        monster.speed = stats.w;
+        monster.tpTimer -= dt;
+        if (monster.tpTimer <= 0) {
+            teleportMonsterNear(closest.x, closest.z);
+            monster.tpTimer = 19.0;
+        }
+    }
+
+    monster.repathTimer -= dt;
+    const monsterGrid = worldToGrid(monster.x, monster.z);
+
+    let targetX = monster.x;
+    let targetZ = monster.z;
+    let directChase = false;
+
+    if (seesPlayer || (isChasing && mDist < BLOCK_SIZE * 1.5)) {
+        targetX = closest.x;
+        targetZ = closest.z;
+        directChase = true;
+        monster.path = [];
+    } else if (monster.lastKnownPlayer) {
+        if (monster.path.length === 0 || monster.repathTimer <= 0 || monster.pathIndex >= monster.path.length) {
+            let path = astar(monsterGrid, monster.lastKnownPlayer, 2000);
+            if (path && path.length > 0) {
+                monster.path = path;
+                monster.pathIndex = 0;
+            } else {
+                monster.lastKnownPlayer = null;
+            }
+            monster.repathTimer = 0.5;
+        }
+
+        if (monster.lastKnownPlayer && monsterGrid.x === monster.lastKnownPlayer.x && monsterGrid.z === monster.lastKnownPlayer.z) {
+            if (!isChasing) {
+                monster.lastKnownPlayer = null;
+                monster.path = [];
+            }
+        }
+    } else {
+        if (!monster.wanderTarget ||
+            Math.hypot(monster.wanderTarget.x * BLOCK_SIZE - monster.x, monster.wanderTarget.z * BLOCK_SIZE - monster.z) < 1.0 ||
+            !monster.path || monster.path.length === 0 || monster.pathIndex >= monster.path.length) {
+            let validSpots = [];
+            for (let z = 1; z < MAP_SIZE - 1; z++) {
+                for (let x = 1; x < MAP_SIZE - 1; x++) {
+                    if (mapData[z][x] === 0) validSpots.push({ x: x, z: z });
+                }
+            }
+            if (validSpots.length > 0) {
+                monster.wanderTarget = validSpots[Math.floor(Math.random() * validSpots.length)];
+                let path = astar(monsterGrid, monster.wanderTarget, 2000);
+                if (path && path.length > 0) {
+                    monster.path = path;
+                    monster.pathIndex = 0;
+                } else {
+                    monster.path = [];
+                }
+            }
+        }
+    }
+
+    if (!directChase && monster.path && monster.pathIndex < monster.path.length) {
+        let targetNode = monster.path[monster.pathIndex];
+        targetX = targetNode.x * BLOCK_SIZE;
+        targetZ = targetNode.z * BLOCK_SIZE;
+
+        if (Math.hypot(targetX - monster.x, targetZ - monster.z) < 0.4) {
+            monster.pathIndex++;
+            if (monster.pathIndex < monster.path.length) {
+                targetNode = monster.path[monster.pathIndex];
+                targetX = targetNode.x * BLOCK_SIZE;
+                targetZ = targetNode.z * BLOCK_SIZE;
+            }
+        }
+    }
+
+    let mdx = targetX - monster.x;
+    let mdz = targetZ - monster.z;
+    let distToTarget = Math.hypot(mdx, mdz);
+    let movedX = false, movedZ = false;
+
+    if (distToTarget > 0.05) {
+        let ndx = mdx / distToTarget;
+        let ndz = mdz / distToTarget;
+
+        let moveX = ndx * monster.speed * dt;
+        let moveZ = ndz * monster.speed * dt;
+
+        let botHitbox = 0.25;
+
+        if (canMoveTo(monster.x + moveX, monster.z, botHitbox)) { monster.x += moveX; movedX = true; }
+        if (canMoveTo(monster.x, monster.z + moveZ, botHitbox)) { monster.z += moveZ; movedZ = true; }
+
+        if (!movedX && !movedZ) {
+            monster.stuckTimer = 0.5;
+            monster.repathTimer = 0;
+        }
+
+        if (movedX || movedZ) {
+            monster.dirX = ndx;
+            monster.dirZ = ndz;
+        } else if (!directChase && monster.path) {
+            monster.repathTimer = 0;
+        }
+    }
+
+    if (movedX || movedZ) {
+        monster.bobTimer += dt * monster.speed;
+    }
+}
+
+// =============================================
+// MONSTER MODEL UPDATE
+// =============================================
+function updateMonsterModel(dt) {
+    if (isMonsterPlayer) {
+        // Monster model invisible to monster player (first person)
+        monsterGroup.visible = false;
+    } else {
+        monsterGroup.visible = true;
+        monsterGroup.position.set(monster.x, Math.sin(monster.bobTimer) * 0.1, monster.z);
+
+        mArmL.rotation.x = Math.sin(monster.bobTimer * 1.5) * 0.5;
+        mArmR.rotation.x = Math.sin(monster.bobTimer * 1.5 + Math.PI) * 0.5;
+        mLegL.rotation.x = Math.sin(monster.bobTimer * 1.5 + Math.PI) * 0.5;
+        mLegR.rotation.x = Math.sin(monster.bobTimer * 1.5) * 0.5;
+
+        let targetYaw = Math.atan2(monster.dirX, monster.dirZ);
+        monsterGroup.rotation.y = targetYaw;
+    }
+}
+
+// =============================================
+// FLASHLIGHT UPDATE
+// =============================================
+function updateFlashlight() {
+    if (isMonsterPlayer) return; // Monster player handled separately
+
+    let mDist = Infinity;
+    if (player.alive) {
+        mDist = Math.hypot(player.x - monster.x, player.z - monster.z);
+    }
+
+    if (mDist < 10.0) {
+        flashlight.intensity = Math.random() < 0.3 ? 0 : 8.0;
+    } else {
+        flashlight.intensity = player.flashlightOn ? 8.0 : 0;
+    }
+}
+
+// =============================================
+// REMOTE PLAYERS RENDER
+// =============================================
+function updateRemotePlayers(dt) {
+    Object.keys(remotePlayers).forEach(uid => {
+        let rp = remotePlayers[uid];
+        if (!rp.mesh) return;
+
+        if (!rp.alive) {
+            rp.mesh.visible = false;
+            return;
+        }
+
+        rp.mesh.visible = true;
+        rp.mesh.position.set(rp.x, 0, rp.z);
+        rp.mesh.rotation.y = rp.yaw || 0;
+
+        // Animate limbs
+        animatePlayerModel(rp.mesh, dt, rp.isMoving || false);
+    });
+}
+
+// =============================================
+// KEYS UPDATE
+// =============================================
+function updateKeys(dt) {
+    if (isMonsterPlayer) return; // Monster can't collect keys
+
+    keysMeshes.forEach(k => {
+        if (k.active && k.mesh) {
+            k.mesh.rotation.y += dt;
+            k.mesh.position.y = 0.5 + Math.sin(performance.now() * 0.003) * 0.1;
+
+            if (player.alive) {
+                let dist = Math.hypot(player.x - k.mesh.position.x, player.z - k.mesh.position.z);
+                if (dist < 2.0) {
+                    k.active = false;
+                    k.mesh.visible = false;
+                    synth.pickup();
+
+                    if (gameMode === 'offline') {
+                        player.keys++;
+                        ui.keysCount.textContent = `Папки: ${player.keys}/${MAX_KEYS}`;
+                        showMessage(`Собрано (${player.keys}/${MAX_KEYS})`);
+                        if (player.keys >= MAX_KEYS) {
+                            exitDoor.active = true;
+                            exitMesh.visible = true;
+                            showMessage("Выход открыт. Иди по зеленой дорожке.");
+                        }
+                    } else {
+                        totalKeys++;
+                        ui.keysCount.textContent = `Папки: ${totalKeys}/${MAX_KEYS}`;
+                        showMessage(`Собрано (${totalKeys}/${MAX_KEYS})`);
+                        broadcastToAll({
+                            type: 'key_collected',
+                            id: k.id,
+                            total: totalKeys
+                        });
+                        if (totalKeys >= MAX_KEYS) {
+                            exitDoor.active = true;
+                            exitMesh.visible = true;
+                            showMessage("Выход открыт!");
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// =============================================
+// EXIT CHECK
+// =============================================
+function updateExit() {
+    if (!exitDoor || !exitDoor.active || !exitMesh) return;
+    if (isMonsterPlayer) return;
+    if (!player.alive) return;
+
+    let dist = Math.hypot(player.x - exitMesh.position.x, player.z - exitMesh.position.z);
+    if (dist < 3.0) {
+        if (gameMode === 'offline') {
+            gameState = 'win';
+            document.getElementById('endTitle').textContent = "ВЫ ВЫБРАЛИСЬ";
+            document.getElementById('endTitle').style.color = "#00aa00";
+            document.getElementById('endText').textContent = "Но Закулисье бесконечно...";
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        } else {
+            gameState = 'win';
+            document.getElementById('endTitle').textContent = "ВЫ ВЫБРАЛИСЬ!";
+            document.getElementById('endTitle').style.color = "#00aa00";
+            document.getElementById('endText').textContent = "Выжившие победили!";
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+            broadcastToAll({ type: 'game_win' });
+        }
+    }
+}
+
+// =============================================
+// KILL CHECK (AI monster kills)
+// =============================================
+function updateKillCheck(dt) {
+    if (gameMode === 'online_monster') return; // Monster player handles kills
+
+    let stats = diffStats[difficulty];
+
+    if (gameMode === 'offline') {
+        if (!player.alive) return;
+        let mDist = Math.hypot(player.x - monster.x, player.z - monster.z);
+        if (mDist < stats.kill && gameState === 'play') {
+            gameState = 'over';
+            synth.screamer();
+            const screamer = document.getElementById('screamerLayer');
+            screamer.style.display = 'block';
+            setTimeout(() => {
+                screamer.style.display = 'none';
+                document.getElementById('endTitle').textContent = "ВЫ ПОГИБЛИ";
+                document.getElementById('endTitle').style.color = "#8a0303";
+                document.getElementById('endText').textContent = "Он оказался быстрее.";
+                document.getElementById('gameOverScreen').classList.remove('hidden');
+            }, 1200);
+        }
+    } else if (gameMode === 'online_normal' && isHost) {
+        // Host checks kills for all players
+        // Local player
+        if (player.alive) {
+            let mDist = Math.hypot(player.x - monster.x, player.z - monster.z);
+            if (mDist < stats.kill) {
+                playerDied();
+            }
+        }
+        // Remote players
+        Object.keys(remotePlayers).forEach(uid => {
+            let rp = remotePlayers[uid];
+            if (rp.alive) {
+                let d = Math.hypot(rp.x - monster.x, rp.z - monster.z);
+                if (d < stats.kill) {
+                    rp.alive = false;
+                    if (rp.mesh) rp.mesh.visible = false;
+                    sendToOne(uid, { type: 'kill_player', target: uid });
+                    broadcastToAll({ type: 'player_died', uid: uid });
+                    updateAliveCount();
+                    checkAllDead();
+                }
+            }
+        });
+    } else if (gameMode === 'online_normal' && !isHost) {
+        // Non-host: just check own death from kill_player message (handled in handleNetworkMessage)
+    }
+}
+
+// =============================================
+// SPECTATOR CAMERA
+// =============================================
+function updateSpectatorCamera() {
+    if (spectatorTargets.length === 0) {
+        buildSpectatorTargets();
+        if (spectatorTargets.length === 0) return;
+        spectatorTargetIndex = 0;
+        updateSpectatorNick();
+    }
+
+    let targetUid = spectatorTargets[spectatorTargetIndex];
+
+    // Remove dead targets (except monster)
+    if (targetUid !== 'monster') {
+        let rp = remotePlayers[targetUid];
+        if (!rp || !rp.alive) {
+            // Find next alive
+            buildSpectatorTargets();
+            if (spectatorTargets.length === 0) return;
+            spectatorTargetIndex = spectatorTargetIndex % spectatorTargets.length;
+            targetUid = spectatorTargets[spectatorTargetIndex];
+            updateSpectatorNick();
+        }
+    }
+
+    let camX, camY, camZ, camYaw, camPitch;
+
+    if (targetUid === 'monster') {
+        camX = monster.x;
+        camY = monster.y || 2.5;
+        camZ = monster.z;
+        camYaw = monster.yaw || Math.atan2(monster.dirX, monster.dirZ);
+        camPitch = monster.pitch || 0;
+    } else {
+        let rp = remotePlayers[targetUid];
+        if (!rp) return;
+        camX = rp.x;
+        camY = rp.y || 1.6;
+        camZ = rp.z;
+        camYaw = rp.yaw || 0;
+        camPitch = rp.pitch || 0;
+    }
+
+    camera.position.set(camX, camY, camZ);
+    camera.rotation.y = camYaw;
+    camera.rotation.x = camPitch;
+
+    flashlight.position.copy(camera.position);
+    let lookDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    flashlight.target.position.copy(camera.position).add(lookDir);
+    flashlight.intensity = 6.0;
+}
+
+// =============================================
+// GAME LOOP
+// =============================================
+function loop(time) {
+    let dt = (time - lastTime) / 1000;
+    if (dt > 0.1) dt = 0.1;
+    lastTime = time;
+    update(dt);
+    if (gameState === 'play' || gameState === 'spectating') {
+        requestAnimationFrame(loop);
+    }
+}
+
+// =============================================
+// AUTO-LOGIN CHECK
+// =============================================
+auth.onAuthStateChanged(async (user) => {
+    if (user && !currentUser) {
+        try {
+            let snap = await db.ref('users/' + user.uid).once('value');
+            if (snap.exists()) {
+                let data = snap.val();
+                currentUser = { uid: user.uid, nick: data.nick, email: data.email };
+                goToMainMenu();
+            }
+        } catch (e) {
+            console.log('Auto-login failed', e);
+        }
+    }
+});
+
+// =============================================
+// MOUSE LOOK (for PC - pointer lock)
+// =============================================
+document.addEventListener('click', () => {
+    if (gameState === 'play' && renderer && renderer.domElement) {
+        renderer.domElement.requestPointerLock && renderer.domElement.requestPointerLock();
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement !== (renderer && renderer.domElement)) return;
+    if (gameState !== 'play') return;
+
+    let deltaX = e.movementX || 0;
+    let deltaY = e.movementY || 0;
+
+    if (isMonsterPlayer) {
+        monster.yaw -= deltaX * 0.002;
+        monster.pitch -= deltaY * 0.002;
+        monster.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, monster.pitch));
+    } else {
+        player.yaw -= deltaX * 0.002;
+        player.pitch -= deltaY * 0.002;
+        player.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, player.pitch));
+    }
+});
+
+// =============================================
+// CLEANUP ON WINDOW CLOSE
+// =============================================
+window.addEventListener('beforeunload', () => {
+    if (currentLobbyId && currentUser) {
+        db.ref('lobbies/' + currentLobbyId + '/players/' + currentUser.uid).remove();
+        if (isHost) {
+            db.ref('lobbies/' + currentLobbyId).remove();
+        }
+    }
+    Object.values(peerConnections).forEach(pc => pc.close());
+});
+
+
+</script>
+</body>
+</html>
